@@ -1,22 +1,39 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import AuthAPI from '../auth/AuthAPI';
+import Navbar from '../component/navBar/NavBar';
+import './homePage.css';
 
-const Home = () => {
+const HomePage = () => {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    AuthAPI.logout();
-    navigate('/login');
+  const navigateToSection = (section) => {
+    // Logique pour naviguer vers la section sélectionnée
+    console.log(`Navigating to ${section}`);
   };
 
   return (
-    <div>
-      <h2>Home Page</h2>
-      <p>Welcome! You are logged in.</p>
-      <button onClick={handleLogout}>Logout</button>
+    <div className="homePage">
+      <Navbar />
+      <div className="sidebar">
+        <ul>
+          <li onClick={() => navigateToSection('recent')}>Recent Files</li>
+          <li onClick={() => navigateToSection('shared')}>Shared With Me</li>
+          <li onClick={() => navigateToSection('storage')}>Storage</li>
+          <li onClick={() => navigateToSection('allFiles')}>All Files</li>
+        </ul>
+      </div>
+      <div className="main-content">
+        <div className="search-bar">
+          <input type="text" placeholder="Search files..." />
+        </div>
+        <div className="content">
+          {/* Contenu dynamique en fonction de la section sélectionnée */}
+          <h2>Section Title</h2>
+          <p>Content goes here...</p>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default Home;
+export default HomePage;

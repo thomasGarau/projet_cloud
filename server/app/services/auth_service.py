@@ -4,17 +4,28 @@ from app import db
 from app.models import User
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
+import re
 
 
-def register_user(username, password):
-    if not username or not password:
+def register_user(username, password, email, first_name, last_name):
+    if not all([username, password, email, first_name, last_name]):
         return {'error': 'Données manquantes'}, 400
 
     if User.query.filter_by(username=username).first():
-        print('Nom d\'utilisateur déjà utilisé')
         return {'error': 'Nom d\'utilisateur déjà utilisé'}, 400
 
-    new_user = User(username=username)
+    if User.query.filter_by(email=email).first():
+        return {'error': 'Email déjà utilisé'}, 400
+
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_regex, email):
+        return {'error': 'Format d\'email invalide'}, 400
+
+    password_regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$'
+    if not re.match(password_regex, password):
+        return {'error': 'Le mot de passe doit contenir au moins 12 caractères, dont une majuscule, une minuscule, un chiffre et un caractère spécial'}, 400
+
+    new_user = User(username=username, email=email, first_name=first_name, last_name=last_name)
     new_user.password = password
     db.session.add(new_user)
     db.session.commit()
@@ -22,7 +33,8 @@ def register_user(username, password):
     user_directory = os.path.join(current_app.root_path, '..', 'user_storage', username)
     os.makedirs(user_directory, exist_ok=True)
 
-    return {'message': 'Utilisateur créé avec succès'}, 201
+    token = create_access_token(identity=username)
+    return {'token': token}, 200
 
 def authenticate_user(username, password):
     user = User.query.filter_by(username=username).first()

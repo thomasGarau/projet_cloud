@@ -9,7 +9,16 @@ main = Blueprint('main', __name__)
 @main.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    result, status = auth_service.register_user(data.get('username'), data.get('password'))
+    
+    username = data.get('username')
+    password = data.get('password')
+    email = data.get('email')
+    first_name = data.get('firstName')
+    last_name = data.get('lastName')
+    if not all([username, password, email, first_name, last_name]):
+        return jsonify({'error': 'Données manquantes'}), 400
+
+    result, status = auth_service.register_user(username, password, email, first_name, last_name)
     return jsonify(result), status
 
 @main.route('/login', methods=['POST'])

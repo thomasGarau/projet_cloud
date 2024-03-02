@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
-import AuthAPI from '../auth/AuthAPI';
+import { useAuthService } from '../../auth/AuthAPI';
 
 const PrivateRoute = ({  element: Element }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const { verifyToken } = useAuthService();
 
     useEffect(() => {
         const checkAuth = async () => {
             try {
                 const {token} = Cookies.get();
-                const valide = await AuthAPI.verifyToken(token);
+                const valide = await verifyToken(token);
                 setIsAuthenticated(valide);
                 console.log("valide")
             } catch (error) {
