@@ -3,7 +3,7 @@ import Cookies from 'js-cookie';
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthProvider';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = 'http://localhost:5000/users';
 
 // Custom hook qui utilise AuthService et gère l'authentification
 export const useAuthService = () => {

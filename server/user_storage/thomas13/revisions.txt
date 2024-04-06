@@ -1,0 +1,59 @@
+user
+
+create quizz
+notation d'etoile sur 10
+connexion inscription(mail primary key , password) doit verifier que le mail est valide ds uservalide
+table uservalide(nom,prenom, mail,statut,role) on verra
+table ue (id_ue,label,visible)
+table utilisateur_has_ue (id_ue,mail_utilisateur)
+methode des j (no move)
+quizz (no move)
+
+
+2listes pour les quizz ( liste des quizz prof et liste des quizz élève)
+
+table d'association reponse-utilisateur (la reponse de l'utilisateur )
+
+reponse devient des items de l'utilisateur
+une question à plusieurs reponse et une reponse est liée qu'à une seul question
+
+
+dans question on a le nbre de points pour la question et dans reponse on a le nombre de points pour la reponse obtenue par l'utilisateur
+
+revoir l'implementation de la relecture des reponses par l'utilisateur
+renomer chat en forum et ajouter les attributs date et etat,label.
+creation de la possibilite d'avoir des forums liés aux cours et des forums liés aux quizz
+
+
+
+
+definition de toutes les routes :
+
+- inscription
+- connection (mot de passe oublie)
+- liste des UE pour élèves (/ue-all) : token dans le header en rpeonse on à une liste json
+- methode des j et creation de carte mentale plus tard
+- le cours (/cours/getcours : prend un id et un token et retourne le contenu et la liste des forums du cours
+- quizz de l'ue (/quizz/getall) prend token et ue et renvoie un json qui contient quizz prof : list et quizz eleve :liste retourner les infos quizz
+- au niveau des question (/quizz/answerquizz) un token et un json qui contient une liste d'objets qui contient id question et la liste des reponses et c(est des idbet on renvoie un statut (true false pour valider)
+- /quizz/getquestion un objet qui contient la liste des questions du quizz et dans cette liste on à des objets et pour chaque question on a le label et la liste de reponse
+- /quizz/notation prend le token , l'id quizz et la note et renvoie un statut
+- /quizz/forum prend l'id quizz et le token et qui renvoie une liste d'objets qui represente les topics
+- /quizz/reponse prend le token et l'id quizz et on retourne un objet qui va contenir pour chaque question les reponses avec des information de boolean
+- /forum/allcours le token et l'id forum cours et on retourne un objet qui contient la liste des messages
+- /forum/allquizz le token et l'id forum quizz et on retourne un objet qui contient la liste des messages
+- /forum/sendmessage prend token id forum et le contenu du message et on retourne un staut de validite
+- /quizz/userquizz prend un token et retourne un objet qui contient 2 liste (liste des quizz done qui contient le nom et la note de l'utilisateur au quizz et dans made liste d'objet avec nom du quizz et note du quizz en general)
+
+
+
+
+
+
+
+
+
+
+teacher
+
+avoir une partie de creation de ue, ...

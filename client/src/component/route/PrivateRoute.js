@@ -14,7 +14,6 @@ const PrivateRoute = ({  element: Element }) => {
                 const {token} = Cookies.get();
                 const valide = await verifyToken(token);
                 setIsAuthenticated(valide);
-                console.log("valide")
             } catch (error) {
                 console.error('Erreur lors de la vérification du token :', error);
             } finally {

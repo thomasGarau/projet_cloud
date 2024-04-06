@@ -1,12 +1,11 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from .services import auth_service
+from app.services import auth_service
 from flask import request
-from flask import current_app as app
 
-main = Blueprint('main', __name__)
+user_bp = Blueprint('user', __name__)
 
-@main.route('/register', methods=['POST'])
+@user_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
     
@@ -21,19 +20,19 @@ def register():
     result, status = auth_service.register_user(username, password, email, first_name, last_name)
     return jsonify(result), status
 
-@main.route('/login', methods=['POST'])
+@user_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     result, status = auth_service.authenticate_user(data.get('username'), data.get('password'))
     return jsonify(result), status
 
-@main.route('/protected', methods=['GET'])
+@user_bp.route('/protected', methods=['GET'])
 @jwt_required()
 def protected():
     current_user = get_jwt_identity()
     return jsonify(logged_in_as=current_user), 200
 
-@main.route('/verify-token', methods=['GET'])
+@user_bp.route('/verify-token', methods=['GET'])
 @jwt_required()
 def verify_token():
     result, status = auth_service.verify_token()

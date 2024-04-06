@@ -1,10 +1,11 @@
 import os
 from flask import current_app
-from app import db
-from app.models import User
+from app.models.user_models import User
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
 import re
+from .. import db
+
 
 
 def register_user(username, password, email, first_name, last_name):
