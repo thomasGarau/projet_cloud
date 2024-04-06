@@ -5,7 +5,6 @@ import { AuthContext } from '../context/AuthProvider';
 
 const API_URL = 'http://localhost:5000/users';
 
-// Custom hook qui utilise AuthService et gère l'authentification
 export const useAuthService = () => {
   const { loginContext, logoutContext } = useContext(AuthContext);
 
@@ -19,7 +18,6 @@ export const useAuthService = () => {
       return response.data;
     } catch (error) {
       console.error("Une erreur est survenue lors de la tentative de connexion : ", error);
-      throw error;
     }
   };
 
@@ -39,7 +37,6 @@ export const useAuthService = () => {
       return response.data;
     } catch (error) {
       console.error("Une erreur est survenue lors de l'inscription : ", error);
-      throw error;
     }
   };
 
@@ -60,7 +57,6 @@ export const useAuthService = () => {
       throw new Error('Token invalide');
     } catch (error) {
       console.error("Une erreur est survenue lors de la vérification du token : ", error);
-      throw error;
     }
   };
 

@@ -6,6 +6,7 @@ class File(db.Model):
     name = db.Column(db.String(255), nullable=False)
     extension = db.Column(db.String(10), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_opened = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
     user = db.relationship('User', backref=db.backref('files', lazy=True))

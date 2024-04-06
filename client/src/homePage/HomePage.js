@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import Navbar from '../component/navBar/NavBar';
 import RecentFiles from '../component/section/RecentFiles';
 import SharedWithMe from '../component/section/SharedWithMe';
@@ -7,7 +7,7 @@ import AllFiles from '../component/section/AllFiles';
 import './homePage.css';
 import AddFileModal from '../component/modal/AddFileModal';
 import { useFileService } from '../API/FileServiceAPI';
-import { AuthContext } from '../context/AuthProvider';
+import { getMimeTypes } from '../services/FileService';
 
 const sectionComponents = {
   recent: RecentFiles,
@@ -17,20 +17,36 @@ const sectionComponents = {
 };
 
 const HomePage = () => {
-  const { uploadFile } = useFileService();
   const [selectedSection, setSelectedSection] = useState('allFiles');
   const [isAddFileModalOpen, setIsAddFileModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const SectionComponent = sectionComponents[selectedSection];
+  const { fetchUserFile } = useFileService();
 
-  const handleUpload = async (file) => {
-    console.log('Fichier à télécharger:', file);
+  const handleSearchChange = (event) => {
+    setSearchQuery(event.target.value);
+    setSelectedSection('allFiles');
+  };
+
+  const openFile = async (fileName, extension) => {
     try {
-      const response = await uploadFile(file);
-      console.log('Réponse du serveur:', response);
+      const fileData = await fetchUserFile(fileName, extension);
+      const mimeTypes = getMimeTypes();
+      const blobType = mimeTypes[extension.split('.')[1]] || '';
+  
+      if (!blobType) {
+        console.error('Format de fichier non pris en charge');
+        return;
+      }
+  
+      const blob = new Blob([fileData], { type: blobType });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
     } catch (error) {
-      console.error('Erreur lors de l\'envoi du fichier:', error);
+      console.error("Erreur lors de l'ouverture du fichier :", error);
     }
   };
+  
 
   return (
     <div className="homePage">
@@ -38,24 +54,44 @@ const HomePage = () => {
       {isAddFileModalOpen && (
         <AddFileModal
           onClose={() => setIsAddFileModalOpen(false)}
-          onUpload={(file) => {handleUpload(file)}}
+          onUpload={(file) => { console.log('Uploading', file); }}
         />
       )}
       <div className="sidebar">
         <ul>
+          <li
+            className={selectedSection === 'allFiles' ? 'selected' : ''}
+            onClick={() => setSelectedSection('allFiles')}
+          >
+            All Files
+          </li>
+          <li
+            className={selectedSection === 'recent' ? 'selected' : ''}
+            onClick={() => setSelectedSection('recent')}
+          >
+            Recent Files
+          </li>
+          <li
+            className={selectedSection === 'shared' ? 'selected' : ''}
+            onClick={() => setSelectedSection('shared')}
+          >
+            Shared With Me
+          </li>
+          <li
+            className={selectedSection === 'storage' ? 'selected' : ''}
+            onClick={() => setSelectedSection('storage')}
+          >
+            Storage
+          </li>
           <li onClick={() => setIsAddFileModalOpen(true)}>Add Files</li>
-          <li onClick={() => setSelectedSection('allFiles')}>All Files</li>
-          <li onClick={() => setSelectedSection('recent')}>Recent Files</li>
-          <li onClick={() => setSelectedSection('shared')}>Shared With Me</li>
-          <li onClick={() => setSelectedSection('storage')}>Storage</li>
         </ul>
       </div>
       <div className="main-content">
         <div className="search-bar">
-          <input type="text" placeholder="Search files..." />
+          <input type="text" placeholder="Search files..." value={searchQuery} onChange={handleSearchChange} />
         </div>
         <div className="content">
-          <SectionComponent />
+          <SectionComponent searchQuery={searchQuery} openFile={openFile} />
         </div>
       </div>
     </div>

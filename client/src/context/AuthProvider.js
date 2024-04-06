@@ -1,17 +1,25 @@
 import Cookies from 'js-cookie';
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const isAuth = Cookies.get('isAuthenticated');
+    return isAuth === 'true';
+  });
 
-  const loginContext = (userData) => {
+  useEffect(() => {
+    Cookies.set('isAuthenticated', isAuthenticated, { secure: true, sameSite: 'strict' });
+  }, [isAuthenticated]);
+
+  const loginContext = () => {
     setIsAuthenticated(true);
   };
 
   const logoutContext = () => {
     setIsAuthenticated(false);
+    Cookies.remove('userToken');
   };
 
   return (

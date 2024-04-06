@@ -17,6 +17,8 @@ def user_files(filename, extension):
     file = File.query.join(File.user).filter(File.name == filename, File.extension == f".{extension}", User.username == username).first()
     if file:
         directory = safe_join(current_app.config['USER_STORAGE'], username)
+        file.last_opened = datetime.utcnow()
+        db.session.commit() 
         try:
             return send_from_directory(directory, full_name, mimetype='application/pdf')
         except FileNotFoundError:
@@ -25,6 +27,23 @@ def user_files(filename, extension):
     else:
         print("file not found in db", full_name, username)
         abort(404)
+
+@user_files_bp.route('/recent-user-files-info')
+@jwt_required()
+def recent_user_files_info():
+    username = get_jwt_identity()
+    files = File.query.join(File.user).filter(User.username == username).order_by(File.last_opened.desc()).all()
+    files_info = []
+    for file in files:
+        file_info = {
+            'name': file.name,
+            'extension': file.extension,
+            'createdAt': file.created_at.strftime("%d/%m/%Y"),
+            'userName': username,
+            'lastOpened': file.last_opened.strftime("%d/%m/%Y %H:%M:%S") if file.last_opened else "Non ouvert"
+        }
+        files_info.append(file_info)
+    return jsonify(files_info)
 
 
 @user_files_bp.route('/user-files-info')
@@ -40,7 +59,8 @@ def user_files_info():
                 'name': file.name,
                 'extension': file.extension,
                 'createdAt': file.created_at.strftime("%d/%m/%Y"),
-                'userName': username
+                'userName': username,
+                'lastOpened': file.last_opened.strftime("%d/%m/%Y %H:%M:%S") if file.last_opened else "Non ouvert"
             }
             files_info.append(file_info)
     return jsonify(files_info)

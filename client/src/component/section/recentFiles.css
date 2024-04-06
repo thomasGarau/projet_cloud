@@ -1,0 +1,41 @@
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.recent-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.recent-table th, .recent-table td {
+    text-align: left;
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+
+.recent-table th {
+    background-color: #f2f2f2;
+}
+
+.recent-table tbody tr:hover {
+    background-color: #f5f5f5;
+}
+
+.recent-table > img {
+    width: 30px;
+    height: auto;
+}
+
+.recent-table > button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    font-size: 1.5rem;
+}
+
+button:hover {
+    color: #333;
+}
