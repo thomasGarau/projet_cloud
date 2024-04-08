@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import Fuse from 'fuse.js';
-
 import './allFiles.css';
 import { useFileService } from '../../API/FileServiceAPI';
 import FileOptionModal from '../modal/FileOptionMenu';
-import RenameModal from '../modal/RenameModal';
-import DeleteModal from '../modal/DeleteModal';
 import { getFileIcons } from '../../services/FileService';
 
 
-const AllFiles = ({searchQuery, openFile}) => {
+const AllFiles = ({ searchQuery, openFile, handleOpenRenameModal, handleOpenDeleteModal, handleOpenShareModal, refreshFiles }) => {
   const { uploadFile, fetchUserFilesInfo, deleteFile, renameFile, fetchUserFile } = useFileService();
   const [files, setFiles] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [selectedFileExtension, setSelectedFileExtension] = useState('');
   const [modalPosition, setModalPosition] = useState({ top: 0, left: 0 });
@@ -51,6 +46,10 @@ const AllFiles = ({searchQuery, openFile}) => {
   }, [searchQuery, files]);
 
   useEffect(() => {
+    fetchData();
+  }, [refreshFiles]); 
+
+  useEffect(() => {
     const handleClickOutside = (event) => {
       const modal = document.querySelector('.file-option-modal');
       if (modal && !modal.contains(event.target)) {
@@ -78,17 +77,18 @@ const AllFiles = ({searchQuery, openFile}) => {
 
   const handleDragOver = (e) => {
     e.preventDefault();
+
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      uploadFile(file).then(() => {
-        console.log('Fichier téléchargé avec succès');
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach(file => {
+      uploadFile(file)
+      .then(() => {
         fetchData();
       });
-    }
+    });
   };
 
   const handleOpenOptionModal = (e, fileName, extension) => {
@@ -109,24 +109,10 @@ const AllFiles = ({searchQuery, openFile}) => {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setShowRenameModal(false);
-    setShowDeleteModal(false);
     setSelectedFileName('');
     setSelectedFileExtension('');
   };
 
-  const handleRename = () => {
-    setShowRenameModal(true);
-    setIsModalOpen(false);
-  };
-
-  const handleDelete = () => {
-    setShowDeleteModal(true);
-    setIsModalOpen(false);
-  };
-
-  const closeRenameModal = () => setShowRenameModal(false);
-  const closeDeleteModal = () => setShowDeleteModal(false);
 
   return (
     <div className="files-container" onDragOver={handleDragOver} onDrop={handleDrop}>
@@ -158,34 +144,12 @@ const AllFiles = ({searchQuery, openFile}) => {
             fileExtension={selectedFileExtension}
             onOpenFile={() => openFile(selectedFileName, selectedFileExtension)}
             onClose={handleCloseModal}
-            onRenameRequested={handleRename}
-            onDeleteRequested={handleDelete}
+            onRenameRequested={() =>handleOpenRenameModal({ name: selectedFileName, extension: selectedFileExtension })}
+            onDeleteRequested={() => handleOpenDeleteModal({ name: selectedFileName + selectedFileExtension })}
+            onShareRequested={() => handleOpenShareModal({ name: selectedFileName + selectedFileExtension })}
             modalPosition={modalPosition}
           />
         </div>
-      )}
-
-      {showRenameModal && (
-        <RenameModal
-        onClose={closeRenameModal}
-        onRename={(originalName, newName) => {
-          renameFile(originalName, newName)
-            .then(() => fetchData())
-            .finally(() => closeRenameModal());
-        }}
-        fileName={selectedFileName}
-        />
-      )}
-      {showDeleteModal && (
-        <DeleteModal
-          onClose={closeDeleteModal}
-          onConfirm={() => {
-            deleteFile(selectedFileName + selectedFileExtension)
-              .then(() => fetchData())
-              .finally(() => closeDeleteModal());
-          }}
-          fileName={selectedFileName}
-        />
       )}
     </div>
   );

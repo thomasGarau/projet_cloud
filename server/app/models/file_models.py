@@ -8,5 +8,7 @@ class File(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_opened = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    original_size = db.Column(db.Integer, nullable=False, default=0)
+    compressed_size = db.Column(db.Integer, nullable=True)
 
     user = db.relationship('User', backref=db.backref('files', lazy=True))

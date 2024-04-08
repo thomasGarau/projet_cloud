@@ -23,6 +23,16 @@ export const useFileService = () => {
         }
     }
 
+    const fetchSharedWithMeFiles = async () => {
+       try{
+            const response = await api.get(`${apiController}/shared-with-me`);
+            return response.data;
+        } catch (error) {
+            console.error("Erreur lors de la récupération des fichiers partagés : ", error);
+            throw new Error('Erreur lors de la récupération des fichiers partagés');
+       } 
+    }
+
     const fetchUserFile = async (filename, extension) => {
         const config = {
             responseType: 'blob',
@@ -78,12 +88,63 @@ export const useFileService = () => {
         }
     };    
 
+    const getStorageInfo = async () => { 
+        try {
+            const response = await api.get(`${apiController}/storage-info`);
+            return response.data;
+        } catch (error) {
+            console.error("Erreur lors de la récupération des informations de stockage : ", error);
+            throw new Error('Erreur lors de la récupération des informations de stockage');
+        }
+    };
+
+    const shareFile = async (filename, shareWithUsername) => {
+        try {
+            const response = await api.post(`${apiController}/share-file`, { filename, shareWithUsername });
+            console.log('Fichier partagé avec succès');
+            return response.data;
+        } catch (error) {
+            console.error("Erreur lors du partage du fichier : ", error);
+            throw new Error('Erreur lors du partage du fichier');
+        }
+    };
+    
+    const fetchFilesSharedWithMe = async () => {
+        try {
+            const response = await api.get(`${apiController}/shared-with-me`);
+            console.log('Fichiers partagés récupérés avec succès');
+            return response.data;
+        } catch (error) {
+            console.error("Erreur lors de la récupération des fichiers partagés : ", error);
+            throw new Error('Erreur lors de la récupération des fichiers partagés');
+        }
+    };
+    
+    const stopSharingFile = async (filename) => {
+        try {
+          const response = await api.delete(`${apiController}/stop-sharing-file`, {
+            data: { filename },
+            headers: { 'Content-Type': 'application/json' },
+          });
+          console.log('Arrêt du partage du fichier avec succès');
+          return response.data;
+        } catch (error) {
+          console.error("Erreur lors de l'arrêt du partage du fichier : ", error);
+          throw new Error('Erreur lors de l\'arrêt du partage du fichier');
+        }
+    };
+
     return {
         fetchUserFilesInfo,
         fetchUserFile,
         fetchRecentUserFilesInfo,
+        fetchSharedWithMeFiles,
         uploadFile,
         renameFile,
-        deleteFile
+        deleteFile,
+        getStorageInfo,
+        shareFile,
+        fetchFilesSharedWithMe,
+        stopSharingFile,
     };
 };

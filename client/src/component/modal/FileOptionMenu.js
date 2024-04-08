@@ -4,7 +4,7 @@ import { useFileService } from '../../API/FileServiceAPI';
 import { useState } from 'react';
 
 
-const FileOptionsMenu = ({ onClose, fileName, fileExtension, onRenameRequested, onDeleteRequested, onOpenFile }) => {
+const FileOptionsMenu = ({ onClose, fileName, fileExtension, onRenameRequested, onDeleteRequested, onShareRequested,  onOpenFile }) => {
   const { fetchUserFile, deleteFile } = useFileService();
  
   const downloadFile = async () => {
@@ -31,15 +31,11 @@ const FileOptionsMenu = ({ onClose, fileName, fileExtension, onRenameRequested, 
     }
   };
 
-  const shareFile = () => {
-    console.log('Partager le fichier');
-  };
-    
-  
+ 
   return (
     <div className="file-options-menu">
       <button onClick={onOpenFile}>Ouvrir</button>
-      <button onClick={shareFile}>Partager</button>
+      <button onClick={onShareRequested}>Partager</button>
       <button onClick={onRenameRequested}>Renommer</button>
       <button onClick={onDeleteRequested}>Supprimer</button>
       <button onClick={downloadFile}>Télécharger</button>

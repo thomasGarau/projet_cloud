@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import './renameModal.css';
 
-const RenameModal = ({ onClose, onRename, fileName }) => {
+const RenameModal = ({ onClose, onRename, fileName, fileExtension }) => {
   const [newName, setNewName] = useState('');
 
     const handleRename = () => {
-        console.log('Renommer le fichier:', fileName, 'en', newName);
-        onRename(fileName, newName);
+        onRename(fileName + fileExtension, newName);
         onClose();
     };
 

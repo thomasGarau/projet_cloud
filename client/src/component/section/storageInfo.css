@@ -1,0 +1,25 @@
+.storage-info {
+    margin: 20px;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.storage-bar-container {
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    width: 100%;
+    height: 20px;
+    overflow: hidden;
+}
+
+.storage-bar {
+    height: 100%;
+    background-color: #4CAF50;
+    text-align: right;
+    border-radius: 5px;
+    color: white;
+    padding-right: 5px;
+}
