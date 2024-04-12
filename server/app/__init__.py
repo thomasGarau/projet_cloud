@@ -12,6 +12,8 @@ from .routes.user_files_routes import user_files_bp
 from .models.file_models import File
 from .models.user_models import User
 import shutil
+from .services.compression_service import test_compression_decompression
+
 
 migrate = Migrate()
 jwt = JWTManager()
@@ -36,12 +38,10 @@ def create_app():
 
     app.register_blueprint(user_bp, url_prefix='/users')
     app.register_blueprint(user_files_bp, url_prefix='/files')
-
     #with app.app_context():
     #  empty_user_storage()
     #  delete_all_entries()
-    
-
+    #test_compression_decompression()
     return app
 
 def delete_all_entries():

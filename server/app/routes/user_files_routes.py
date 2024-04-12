@@ -19,7 +19,7 @@ def user_files(filename, extension):
     username = get_jwt_identity()
     file = File.query.join(File.user).filter(File.name == filename, File.extension == f".{extension}", User.username == username).first()
     if file:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, full_name)
+        file_path = safe_join(current_app.config['USER_STORAGE'], username, filename + '.bin')
         file.last_opened = datetime.utcnow()
         db.session.commit()
         
@@ -45,7 +45,7 @@ def recent_user_files_info():
     files = File.query.join(File.user).filter(User.username == username).order_by(File.last_opened.desc()).all()
     files_info = []
     for file in files:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + file.extension)
+        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + '.bin')
         if os.path.isfile(file_path):
             file_info = {
                 'name': file.name,
@@ -89,7 +89,7 @@ def user_files_info():
     files = File.query.join(File.user).filter(User.username == username).all()
     files_info = []
     for file in files:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + file.extension)
+        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + '.bin')
         if os.path.isfile(file_path):
             file_info = {
                 'name': file.name,
@@ -112,28 +112,33 @@ def upload_file():
         return jsonify({'error': 'Aucun fichier sélectionné'}), 400
 
     username = get_jwt_identity()
-    filename = secure_filename(file.filename)
+    filename = secure_filename(os.path.splitext(file.filename)[0])
+    extension = os.path.splitext(file.filename)[1]
     file_content = file.read()
     original_size = len(file_content)
-    compressed_content = compresse_file(file_content)
-    file_path = os.path.join(current_app.config['USER_STORAGE'], username, filename)
+    compressed_content = compresse_file(file_content, extension)
+    file_path = os.path.join(current_app.config['USER_STORAGE'], username, filename + '.bin')
     
+    ##enregistrer au format .bin dans le repertoire utilisateur
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, 'wb') as compressed_file:
         compressed_file.write(compressed_content)
 
+    #evaluer la taille du fichier compressé 
+    compresse_file_size = os.path.getsize(file_path)
+
     new_file = File(
-        name=os.path.splitext(filename)[0],
-        extension=os.path.splitext(filename)[1],
+        name=filename,
+        extension=extension,
         created_at=datetime.utcnow(),
         last_opened=datetime.utcnow(),
         original_size=original_size,
-        compressed_size=len(compressed_content),
+        compressed_size=compresse_file_size,
         user_id=User.query.filter_by(username=username).first().id
     )
     db.session.add(new_file)
     db.session.commit()
-
+    print(new_file.original_size, "=>", new_file.compressed_size)
     return jsonify({'message': 'Fichier téléchargé avec succès', 'filename': filename}), 200
 
 @user_files_bp.route('/rename-file', methods=['POST'])

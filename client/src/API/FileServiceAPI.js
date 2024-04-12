@@ -53,7 +53,7 @@ export const useFileService = () => {
 
         const config = {
             headers: {
-            'Content-Type': 'multipart/form-data',
+                'Content-Type': 'multipart/form-data',
             },
         };
 
