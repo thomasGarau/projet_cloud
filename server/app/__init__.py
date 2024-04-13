@@ -17,8 +17,10 @@ from .services.compression_service import test_compression_decompression
 
 migrate = Migrate()
 jwt = JWTManager()
+app = None
 
 def create_app():
+    global app
     app = Flask(__name__)
     CORS(app)
 

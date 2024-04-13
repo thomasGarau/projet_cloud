@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './addFileModale.css';
 
-const AddFileModal = ({ onClose, onUpload }) => {
+const AddFileModal = ({ onClose, onUpload, onLoadingFile }) => {
   const [selectedFile, setSelectedFile] = useState(null);
 
   const handleFileChange = (e) => {

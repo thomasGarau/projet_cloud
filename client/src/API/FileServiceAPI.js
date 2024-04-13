@@ -47,24 +47,47 @@ export const useFileService = () => {
         }
     };
 
-    const uploadFile = async (file) => {
+    const uploadFile = async (file, file_id, onStart, onComplete, onError) => {
         const formData = new FormData();
         formData.append('file', file);
-
+        formData.append('file_id', file_id);
+    
         const config = {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
         };
-
+    
+        onStart(); // Callback pour démarrer l'indicateur de chargement
+    
         try {
             const response = await api.post(`${apiController}/upload-file`, formData, config);
-            return response.data;
+            onComplete(); // Callback pour arrêter l'indicateur de chargement en cas de succès
         } catch (error) {
             console.error("Erreur lors de l'envoi du fichier : ", error);
-            throw new Error('Erreur lors de l\'envoi du fichier');
+            onError(error); // Callback pour gérer l'erreur
+        }
+    };    
+
+    const checkUploadStatus = async (file_id, checkInterval, onCompletion) => {
+        console.log('Checking upload status for file_id:', file_id);
+        try {
+            const response = await api.get(`${apiController}/check-status/${file_id}`);
+            if (response.data.status === 'completed' || response.data.status === 'failed') {
+                console.log('Upload status:', response.data.status);
+                clearInterval(checkInterval);
+                onCompletion();
+            } else {
+                console.log(response.data.status);
+
+            }
+        } catch (error) {
+            console.error('Error checking status:', error);
+            clearInterval(checkInterval);
+            onCompletion();
         }
     };
+    
 
     const renameFile = async (originalName, newName) => {
         try {
@@ -146,5 +169,6 @@ export const useFileService = () => {
         shareFile,
         fetchFilesSharedWithMe,
         stopSharingFile,
+        checkUploadStatus,
     };
 };

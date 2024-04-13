@@ -82,39 +82,73 @@ def bitstring_to_bytes(s):
     return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
 
 def assembler_fichier_comprime(table_codage, contenu_encode, extension_originale):
-    table_codage_bytes = json.dumps(table_codage).encode('utf-8')
+    # Convertir la table de codage en une suite d'octets plus compacte
+    table_codage_bytes = encoder_table_codage(table_codage)
     extension_bytes = extension_originale.encode('utf-8')
     taille_extension = len(extension_bytes)
-    
+
     taille_table_codage = len(table_codage_bytes)
     bits_manquants = (8 - len(contenu_encode) % 8) % 8
     contenu_encode_ajuste = contenu_encode + '0' * bits_manquants
     contenu_encode_bytes = bitstring_to_bytes(contenu_encode_ajuste)
-    
-    en_tete = taille_table_codage.to_bytes(4, 'big') + bits_manquants.to_bytes(4, 'big') + taille_extension.to_bytes(4, 'big')
-    
-    fichier_comprime = en_tete + extension_bytes + table_codage_bytes + contenu_encode_bytes
+
+    en_tete = taille_table_codage.to_bytes(4, 'big') + bits_manquants.to_bytes(4, 'big') + taille_extension.to_bytes(4, 'big') + extension_bytes + table_codage_bytes
+    fichier_comprime = en_tete + contenu_encode_bytes
     return fichier_comprime
 
 def desassembler_fichier_comprime(fichier_comprime):
-
     taille_table_codage = int.from_bytes(fichier_comprime[:4], 'big')
     bits_manquants = int.from_bytes(fichier_comprime[4:8], 'big')
     taille_extension = int.from_bytes(fichier_comprime[8:12], 'big')
-    
-    debut_table_codage = 12 + taille_extension
-    extension_bytes = fichier_comprime[12:debut_table_codage]
+
+    debut_extension = 12
+    fin_extension = debut_extension + taille_extension
+    extension_bytes = fichier_comprime[debut_extension:fin_extension]
     extension_originale = extension_bytes.decode('utf-8')
-    
+
+    debut_table_codage = fin_extension
     fin_table_codage = debut_table_codage + taille_table_codage
     table_codage_bytes = fichier_comprime[debut_table_codage:fin_table_codage]
-    table_codage = json.loads(table_codage_bytes.decode('utf-8'))
-    
+    table_codage = decoder_table_codage(table_codage_bytes)
+
     contenu_encode_bytes = fichier_comprime[fin_table_codage:]
     bit_string = ''.join([format(byte, '08b') for byte in contenu_encode_bytes])
     bit_string_sans_padding = bit_string[:-bits_manquants] if bits_manquants > 0 else bit_string
-    
+
     return extension_originale, table_codage, bit_string_sans_padding
+
+def encoder_table_codage(table_codage):
+    result = bytearray()
+    for key, value in table_codage.items():
+        key_byte = int(key).to_bytes(1, 'big')
+        code_length = len(value)
+        length_bits = code_length.to_bytes(1, 'big')  # 1 byte pour la longueur
+        code_bits = int(value, 2).to_bytes((code_length + 7) // 8, 'big')  # Convertir en bytes
+        result.extend(key_byte)
+        result.extend(length_bits)
+        result.extend(code_bits)  # Ajouter les bits de code
+    return bytes(result)
+
+
+def decoder_table_codage(encoded_data):
+    table_codage = {}
+    i = 0
+    while i < len(encoded_data):
+        #on recupere le premier octet qui est la clé
+        key = encoded_data[i]
+        i += 1
+        #on recupére la taille que fait le codage en bits pour la clé
+        code_length = encoded_data[i]
+        i += 1
+        #on recupere le codage en bits en fonction de la taille récupérée
+        code_bytes = encoded_data[i:i + (code_length + 7) // 8]
+        #on incrémente i du nombre de bits récupérés
+        i += (code_length + 7) // 8
+        #on tranforme le code de bits en entier puis string pour l'ajouter à la table de codage
+        code = int.from_bytes(code_bytes, 'big')
+        code_str = format(code, f"0{code_length}b")
+        table_codage[key] = code_str
+    return table_codage
 
 
 def affiche_arbre_huffman(noeud, prefix=""):
@@ -248,10 +282,41 @@ def test_genere_table_codage():
 
     return "Le test de la fonction genere_table_codage a réussi."
 
+def test_encode_table_codage():
+    table_codage = {
+        111: "000",   # 'o'
+        104: "0010",  # 'h'
+        100: "0011",  # 'd'
+        105: "0100",  # 'i'
+    }
+    table_bytes = encoder_table_codage(table_codage)
+    resultat_attendu = b"\x6f\x03\x00\x68\x04\x02\x64\x04\x03\x69\x04\x04"
+    
+    print("table_bytes : ", table_bytes)
+    print("resultat_attendu : ", resultat_attendu)
+    assert table_bytes == resultat_attendu, "La table de codage récupérée ne correspond pas à la table d'origine."
+
+    print("Le test de la fonction encode_table_codage a réussi.")
+
+def test_decode_table_codage():
+    resultat_attendu = {
+        111: "000",   # 'o'
+        104: "0010",  # 'h'
+        100: "0011",  # 'd'
+        105: "0100",  # 'i'
+    }
+    table_bytes = b"\x6f\x03\x00\x68\x04\x02\x64\x04\x03\x69\x04\x04"
+    table_recuperee = decoder_table_codage(table_bytes)
+
+    print("table_recuperee : ", table_recuperee)
+    assert table_recuperee == resultat_attendu, "La table de codage récupérée ne correspond pas à la table d'origine."
+
+
 def run_test():
-    #test_compression_decompression()
+    test_compression_decompression()
     test_cree_dictionnaire()
     test_cree_arbre_huffman_complexe()
     test_genere_table_codage()
-
-run_test()
+    test_encode_table_codage()
+    test_decode_table_codage()
+#run_test()

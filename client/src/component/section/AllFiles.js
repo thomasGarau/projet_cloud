@@ -4,10 +4,10 @@ import './allFiles.css';
 import { useFileService } from '../../API/FileServiceAPI';
 import FileOptionModal from '../modal/FileOptionMenu';
 import { getFileIcons } from '../../services/FileService';
+import { generateFileID } from '../../services/FileService';
 
-
-const AllFiles = ({ searchQuery, openFile, handleOpenRenameModal, handleOpenDeleteModal, handleOpenShareModal, refreshFiles }) => {
-  const { uploadFile, fetchUserFilesInfo, deleteFile, renameFile, fetchUserFile } = useFileService();
+const AllFiles = ({ searchQuery, openFile, handleOpenRenameModal, handleOpenDeleteModal, handleOpenShareModal, refreshFiles, onLoadingFile }) => {
+  const { uploadFile, fetchUserFilesInfo, checkUploadStatus } = useFileService();
   const [files, setFiles] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState('');
@@ -84,12 +84,28 @@ const AllFiles = ({ searchQuery, openFile, handleOpenRenameModal, handleOpenDele
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files);
     files.forEach(file => {
-      uploadFile(file)
-      .then(() => {
-        fetchData();
-      });
+      console.log(file.name);
+      onLoadingFile(file.name, true);
+      const file_id = generateFileID();
+
+      uploadFile(file, file_id, 
+        () => onLoadingFile(file.name, true),
+        () => {
+          const checkInterval = setInterval(() => {
+            checkUploadStatus(file_id, checkInterval, () => {
+              onLoadingFile(file.name, false);
+              fetchData();
+            });
+          }, 2500);
+        },
+        (error) => {
+          onLoadingFile(file.name, false);
+          console.error('Upload failed', error);
+        }
+      );
     });
   };
+
 
   const handleOpenOptionModal = (e, fileName, extension) => {
     e.preventDefault();

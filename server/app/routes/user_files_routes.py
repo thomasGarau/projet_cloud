@@ -1,16 +1,19 @@
 from flask import Blueprint, send_from_directory, jsonify, current_app, abort, request
 from flask import Response
 from werkzeug.utils import secure_filename, safe_join
-from .. import db
+import threading
 import os
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+from .. import db
 from ..services.compression_service import compresse_file, decompresse_file
 from ..models.file_models import File
 from ..models.user_models import User
 from ..models.shared_files_models import SharedFile
 
 user_files_bp = Blueprint('user_files', __name__)
+
+uploads = {}
 
 @user_files_bp.route('/user-files/<filename>.<extension>')
 @jwt_required()
@@ -106,40 +109,71 @@ def user_files_info():
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'Aucun fichier envoyé'}), 400
-
+    
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'Aucun fichier sélectionné'}), 400
+    
+    if 'file_id' not in request.form:
+        return jsonify({'error': 'Aucun identifiant de fichier envoyé'}), 400
+    
+    file_id = request.form['file_id']
 
     username = get_jwt_identity()
-    filename = secure_filename(os.path.splitext(file.filename)[0])
-    extension = os.path.splitext(file.filename)[1]
-    file_content = file.read()
-    original_size = len(file_content)
-    compressed_content = compresse_file(file_content, extension)
-    file_path = os.path.join(current_app.config['USER_STORAGE'], username, filename + '.bin')
+
+    uploads[file_id] = 'starting'
+    thread = threading.Thread(target=handle_file_upload, args=(file, username, file_id))
+    thread.start()
     
-    ##enregistrer au format .bin dans le repertoire utilisateur
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, 'wb') as compressed_file:
-        compressed_file.write(compressed_content)
+    return jsonify({'message': 'Upload started', 'file_id': file_id}), 202
 
-    #evaluer la taille du fichier compressé 
-    compresse_file_size = os.path.getsize(file_path)
+@user_files_bp.route('/check-status/<file_id>', methods=['GET'])
+@jwt_required()
+def check_status(file_id):
+    status = uploads.get(file_id, 'unknown')
+    print("status", status)
+    return jsonify({'status': status, 'file_id': file_id}), 200
 
-    new_file = File(
-        name=filename,
-        extension=extension,
-        created_at=datetime.utcnow(),
-        last_opened=datetime.utcnow(),
-        original_size=original_size,
-        compressed_size=compresse_file_size,
-        user_id=User.query.filter_by(username=username).first().id
-    )
-    db.session.add(new_file)
-    db.session.commit()
-    print(new_file.original_size, "=>", new_file.compressed_size)
-    return jsonify({'message': 'Fichier téléchargé avec succès', 'filename': filename}), 200
+
+def handle_file_upload(file, username, file_id) :
+    from .. import app
+    with app.app_context():
+        try:
+            uploads[file_id] = 'reading'
+            filename = secure_filename(os.path.splitext(file.filename)[0])
+            extension = os.path.splitext(file.filename)[1]
+            file_content = file.read()
+            original_size = len(file_content)
+            uploads[file_id] = 'compressing'
+            compressed_content = compresse_file(file_content, extension)
+            uploads[file_id] = 'writing'
+            file_path = os.path.join(current_app.config['USER_STORAGE'], username, filename + '.bin')
+            
+            ##enregistrer au format .bin dans le repertoire utilisateur
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb') as compressed_file:
+                compressed_file.write(compressed_content)
+
+            uploads[file_id] = 'saving'
+            #evaluer la taille du fichier compressé 
+            compresse_file_size = os.path.getsize(file_path)
+
+            new_file = File(
+                name=filename,
+                extension=extension,
+                created_at=datetime.utcnow(),
+                last_opened=datetime.utcnow(),
+                original_size=original_size,
+                compressed_size=compresse_file_size,
+                user_id=User.query.filter_by(username=username).first().id
+            )
+            db.session.add(new_file)
+            db.session.commit()
+            uploads[file_id] = 'completed'
+            print(new_file.original_size, "=>", new_file.compressed_size)
+        except Exception as e:
+            print("Erreur lors de l'upload du fichier", e)
+            uploads[file_id] = 'failed'
 
 @user_files_bp.route('/rename-file', methods=['POST'])
 @jwt_required()
@@ -247,8 +281,6 @@ def share_file():
     db.session.commit()
     
     return jsonify({'message': 'Fichier partagé avec succès'}), 200
-
-
 
 
 @user_files_bp.route('/stop-sharing-file', methods=['DELETE'])

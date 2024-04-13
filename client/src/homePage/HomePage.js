@@ -8,9 +8,11 @@ import AddFileModal from '../component/modal/AddFileModal';
 import RenameModal from '../component/modal/RenameModal';
 import DeleteModal from '../component/modal/DeleteModal';
 import ShareModal from '../component/modal/ShareModal';
+import LoadingIndicator from '../component/loader/LoadingIndicator';
 import './homePage.css';
 import { useFileService } from '../API/FileServiceAPI';
 import { getMimeTypes } from '../services/FileService';
+import { generateFileID } from '../services/FileService';
 
 const sectionComponents = {
   recent: RecentFiles,
@@ -29,8 +31,9 @@ const HomePage = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isAddFileModalOpen, setIsAddFileModalOpen] = useState(false);
   const [refreshFiles, setRefreshFiles] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState([]);
 
-  const { fetchUserFile, renameFile, deleteFile, uploadFile, shareFile, stopSharingFile } = useFileService();
+  const { fetchUserFile, renameFile, deleteFile, uploadFile, shareFile, stopSharingFile, checkUploadStatus } = useFileService();
 
   const handleSearchChange = (e) => setSearchQuery(e.target.value);
 
@@ -67,7 +70,6 @@ const HomePage = () => {
   };
 
   const handleOpenShareModal = (file) => {
-    console.log("ad")
     setSelectedFile(file);
     setShowShareModal(true);
   };
@@ -87,14 +89,45 @@ const HomePage = () => {
     handleCloseDeleteModal();
   };
 
+  const handleLoadingFile = (fileName, isLoading) => {
+    console.log("Loading file : ", fileName, isLoading);
+    if (isLoading) {
+      setUploadingFiles(prev => [...prev, fileName]);
+    } else {
+      setUploadingFiles(prev => prev.filter(file => file !== fileName));
+    }
+  };
+
+  const handleFileUpload = (file) => {
+    const file_id = generateFileID();
+    uploadFile(file, file_id, 
+        () => handleLoadingFile(file.name, true),
+        () => { 
+            const checkInterval = setInterval(() => {
+                checkUploadStatus(file_id, checkInterval, () => {
+                    handleLoadingFile(file.name, false);
+                    setRefreshFiles(prev => !prev);
+                });
+            }, 2500);
+        }, 
+        (error) => {
+            handleLoadingFile(file.name, false);
+            console.error('Upload failed', error);
+        }
+    );
+  };
+
+
   const SectionComponent = sectionComponents[selectedSection];
   return (
     <div className="homePage">
       <Navbar />
+      {uploadingFiles.length > 0 && <LoadingIndicator files={uploadingFiles} />}
       {isAddFileModalOpen && (
         <AddFileModal
-          onClose={() => setIsAddFileModalOpen(false)}
-          onUpload={(file) => { uploadFile(file).then(() => setRefreshFiles(prev => !prev));}}
+            onClose={() => setIsAddFileModalOpen(false)}
+            onUpload={(file) => handleFileUpload(file)}
+            onLoadingFile={handleLoadingFile}
         />
       )}
       <div className="sidebar">
@@ -131,15 +164,16 @@ const HomePage = () => {
           <input type="text" placeholder="Search files..." value={searchQuery} onChange={handleSearchChange} />
         </div>
         <div className="content">
-          <SectionComponent
-            searchQuery={searchQuery}
-            openFile={openFile}
-            handleOpenRenameModal={handleOpenRenameModal}
-            handleOpenDeleteModal={handleOpenDeleteModal}
-            handleOpenShareModal={handleOpenShareModal}
-            refreshFiles={refreshFiles}
-            setRefreshFiles={setRefreshFiles}
-          />
+        <SectionComponent
+          searchQuery={searchQuery}
+          openFile={openFile}
+          handleOpenRenameModal={handleOpenRenameModal}
+          handleOpenDeleteModal={handleOpenDeleteModal}
+          handleOpenShareModal={handleOpenShareModal}
+          refreshFiles={refreshFiles}
+          setRefreshFiles={setRefreshFiles}
+          onLoadingFile={handleLoadingFile}
+        />
 
           {showAddFileModal && (
             <AddFileModal onClose={handleCloseAddFileModal}/>
