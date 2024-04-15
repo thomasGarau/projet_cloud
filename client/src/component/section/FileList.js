@@ -57,6 +57,8 @@ const FileList = ({ fetchFilesFunction, openFile, handleOpenRenameModal, handleO
     setSelectedFile(null);
   };
 
+
+  console.log(files);
   return (
     <div className='table-container'>
       <h2>{tableTitle}</h2>
@@ -65,7 +67,7 @@ const FileList = ({ fetchFilesFunction, openFile, handleOpenRenameModal, handleO
           <tr>
             <th>Type</th>
             <th>Nom</th>
-            <th>Dernière ouverture</th>
+            <th>Date de création</th>
             <th>Propriétaire</th>
             <th>Actions</th>
           </tr>
@@ -75,8 +77,8 @@ const FileList = ({ fetchFilesFunction, openFile, handleOpenRenameModal, handleO
             <tr key={file.id}>
               <td><img src={fileIcons[file.extension.split('.')[1]] || fileIcons['default']} alt="file type" /></td>
               <td>{file.name}</td>
-              <td>{file.lastOpened}</td>
-              <td>{file.userName}</td>
+              <td>{file.createdAt}</td>
+              <td>{file.ownerUserName}</td>
               <td>
                 <button onClick={(e) => handleOpenModal(e, file)}>⋮</button>
               </td>
