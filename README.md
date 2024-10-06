@@ -31,5 +31,6 @@ Contrairement à une application classique de gestion de fichiers basée sur une
   Lancer le serveur : ```flask run```
   
 ## Utilisation
+Le client tourne en localhost à l'adresse : http://localhost:3000/
 Une fois le client et le serveur lancés, la plateforme vous permet d'uploader et de stocker des fichiers de tout types.
 L'algorithme de compression de Huffman est utilisé pour compresser les fichiers avant de les enregistrer, ce qui permet de réduire l'espace utilisé sur le serveur et la bande passante lors des téléchargements.
