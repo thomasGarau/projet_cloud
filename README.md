@@ -29,6 +29,10 @@ Contrairement à une application classique de gestion de fichiers basée sur une
   - Sur Linux/Mac : ```source venv/bin/activate```
 - Installer les dépendances : ```pip install -r requirements.txt```
   Lancer le serveur : ```flask run```
+- Instancier un fichier .env avec les attributs suivant : 
+  - SECRET_KEY=
+  - DATABASE_URI=
+  - JWT_SECRET_KEY=
   
 ## Utilisation
 Le client tourne en localhost à l'adresse ```http://localhost:3000/```
