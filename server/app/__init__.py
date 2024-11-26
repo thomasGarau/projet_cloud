@@ -13,6 +13,17 @@ from .models.file_models import File
 from .models.user_models import User
 import shutil
 from .services.compression_service import test_compression_decompression
+from dotenv import load_dotenv  # Import pour charger le .env
+import os
+
+load_dotenv()  # Charger les variables d'environnement depuis le fichier .env
+
+AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+
+print(f"Container name: {AZURE_CONTAINER_NAME}")
+
 
 
 migrate = Migrate()

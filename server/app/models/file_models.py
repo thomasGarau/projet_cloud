@@ -10,5 +10,6 @@ class File(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     original_size = db.Column(db.Integer, nullable=False, default=0)
     compressed_size = db.Column(db.Integer, nullable=True)
-
+    azure_blob_path = db.Column(db.String(512), nullable=True)
+    
     user = db.relationship('User', backref=db.backref('files', lazy=True))

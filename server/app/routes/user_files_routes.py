@@ -10,6 +10,7 @@ from ..services.compression_service import compresse_file, decompresse_file
 from ..models.file_models import File
 from ..models.user_models import User
 from ..models.shared_files_models import SharedFile
+from azure.storage.blob import BlobServiceClient
 
 user_files_bp = Blueprint('user_files', __name__)
 
@@ -135,45 +136,75 @@ def check_status(file_id):
     return jsonify({'status': status, 'file_id': file_id}), 200
 
 
-def handle_file_upload(file, username, file_id) :
+def handle_file_upload(file, username, file_id):
     from .. import app
     with app.app_context():
         try:
+            app.logger.debug("Début de la fonction")
             uploads[file_id] = 'reading'
+
+            # Variables d'environnement
+            container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+            connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+            if not container_name:
+                raise ValueError("Le nom du conteneur est introuvable. Vérifiez la variable AZURE_STORAGE_CONTAINER_NAME.")
+            if not connection_string:
+                raise ValueError("La chaîne de connexion est introuvable. Vérifiez AZURE_STORAGE_CONNECTION_STRING.")
+
+            app.logger.debug(f"Nom du conteneur : {container_name}")
+
+            # Lecture du fichier
             filename = secure_filename(os.path.splitext(file.filename)[0])
             extension = os.path.splitext(file.filename)[1]
             file_content = file.read()
             original_size = len(file_content)
+            app.logger.debug(f"Fichier lu, taille originale : {original_size}")
+
+            # Compression
             uploads[file_id] = 'compressing'
             compressed_content = compresse_file(file_content, extension)
-            uploads[file_id] = 'writing'
-            file_path = os.path.join(current_app.config['USER_STORAGE'], username, filename + '.bin')
-            
-            ##enregistrer au format .bin dans le repertoire utilisateur
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, 'wb') as compressed_file:
-                compressed_file.write(compressed_content)
+            app.logger.debug(f"Taille après compression : {len(compressed_content)}")
 
-            uploads[file_id] = 'saving'
-            #evaluer la taille du fichier compressé 
-            compresse_file_size = os.path.getsize(file_path)
+            # Azure Blob Storage
+            uploads[file_id] = 'uploading'
+            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            container_client = blob_service_client.get_container_client(container_name)
 
+            # Création du conteneur si nécessaire
+            try:
+                container_client.create_container()
+                app.logger.debug(f"Conteneur {container_name} créé avec succès.")
+            except Exception as e:
+                app.logger.debug(f"Conteneur {container_name} existe déjà ou erreur : {e}")
+
+            # Upload du fichier
+            blob_name = f"{username}/{filename}.bin"
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_client.upload_blob(compressed_content, overwrite=True)
+            app.logger.debug(f"Fichier {blob_name} uploadé avec succès.")
+
+            # Métadonnées en base
+            compressed_file_size = len(compressed_content)
             new_file = File(
                 name=filename,
                 extension=extension,
                 created_at=datetime.utcnow(),
                 last_opened=datetime.utcnow(),
                 original_size=original_size,
-                compressed_size=compresse_file_size,
-                user_id=User.query.filter_by(username=username).first().id
+                compressed_size=compressed_file_size,
+                user_id=User.query.filter_by(username=username).first().id,
+                azure_blob_path=blob_name
             )
             db.session.add(new_file)
             db.session.commit()
+
             uploads[file_id] = 'completed'
-            print(new_file.original_size, "=>", new_file.compressed_size)
+            app.logger.debug(f"Métadonnées enregistrées : {new_file.original_size} => {new_file.compressed_size}")
         except Exception as e:
-            print("Erreur lors de l'upload du fichier", e)
+            app.logger.error(f"Erreur lors de l'upload du fichier : {e}")
             uploads[file_id] = 'failed'
+
 
 @user_files_bp.route('/rename-file', methods=['POST'])
 @jwt_required()
