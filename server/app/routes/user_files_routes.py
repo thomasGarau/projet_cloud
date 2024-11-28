@@ -90,19 +90,40 @@ def shared_with_me():
 @jwt_required()
 def user_files_info():
     username = get_jwt_identity()
-    files = File.query.join(File.user).filter(User.username == username).all()
+
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client(container_name)
+
     files_info = []
-    for file in files:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + '.bin')
-        if os.path.isfile(file_path):
+
+    try:
+        # Lister les blobs pour cet utilisateur
+        blobs = container_client.list_blobs(name_starts_with=f"{username}/")
+        for blob in blobs:
+            # Extraire le nom du fichier et l'extension
+            file_full_name = blob.name.split("/")[-1]  # Ex. "document.pdf"
+            file_name, file_extension = os.path.splitext(file_full_name)
+
             file_info = {
-                'name': file.name,
-                'extension': file.extension,
-                'createdAt': file.created_at.strftime("%d/%m/%Y"),
+                'name': file_name,  # Nom du fichier sans extension
+                'extension': file_extension,  # Extension, ex : .pdf
+                'createdAt': blob.creation_time.strftime("%d/%m/%Y") if blob.creation_time else "Inconnue",
                 'userName': username,
-                'lastOpened': file.last_opened.strftime("%d/%m/%Y %H:%M:%S") if file.last_opened else "Non ouvert"
+                'lastOpened': "Non disponible dans Azure"  # Azure ne stocke pas cette info
             }
             files_info.append(file_info)
+
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors de la récupération des fichiers : {e}")
+        return jsonify({"error": "Impossible de récupérer les fichiers depuis Azure Blob Storage"}), 500
+
     return jsonify(files_info)
 
 @user_files_bp.route('/upload-file', methods=['POST'])
@@ -148,7 +169,7 @@ def handle_file_upload(file, username, file_id):
             connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 
             if not container_name:
-                raise ValueError("Le nom du conteneur est introuvable. Vérifiez la variable AZURE_STORAGE_CONTAINER_NAME.")
+                raise ValueError("Le nom du conteneur est introuvable. Vérifiez la variable AZURE_CONTAINER_NAME.")
             if not connection_string:
                 raise ValueError("La chaîne de connexion est introuvable. Vérifiez AZURE_STORAGE_CONNECTION_STRING.")
 
