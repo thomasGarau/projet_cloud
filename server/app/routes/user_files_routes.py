@@ -270,7 +270,6 @@ def check_status(file_id):
     print("status", status)
     return jsonify({'status': status, 'file_id': file_id}), 200
 
-
 def handle_file_upload(file, username, file_id):
     from .. import app
     with app.app_context():
@@ -319,7 +318,12 @@ def handle_file_upload(file, username, file_id):
             blob_client.upload_blob(compressed_content, overwrite=True)
             app.logger.debug(f"Fichier {blob_name} uploadé avec succès.")
 
-            # Métadonnées en base
+            # Début de la transaction pour la base de données
+            uploads[file_id] = 'saving_metadata'
+            user = User.query.filter_by(username=username).first()
+            if not user:
+                raise ValueError(f"Utilisateur {username} introuvable dans la base de données")
+
             compressed_file_size = len(compressed_content)
             new_file = File(
                 name=filename,
@@ -328,17 +332,27 @@ def handle_file_upload(file, username, file_id):
                 last_opened=datetime.utcnow(),
                 original_size=original_size,
                 compressed_size=compressed_file_size,
-                user_id=User.query.filter_by(username=username).first().id,
+                user_id=user.id,
                 azure_blob_path=blob_name
             )
+
             db.session.add(new_file)
-            db.session.commit()
+            db.session.commit()  # Commit explicite
 
             uploads[file_id] = 'completed'
             app.logger.debug(f"Métadonnées enregistrées : {new_file.original_size} => {new_file.compressed_size}")
+
         except Exception as e:
             app.logger.error(f"Erreur lors de l'upload du fichier : {e}")
             uploads[file_id] = 'failed'
+
+            # Si une erreur s'est produite, supprimer le fichier dans Azure
+            if 'blob_client' in locals():  # Vérifie si le fichier a été uploadé
+                try:
+                    blob_client.delete_blob()
+                    app.logger.debug(f"Blob {blob_name} supprimé suite à une erreur.")
+                except Exception as azure_error:
+                    app.logger.error(f"Erreur lors de la suppression du blob {blob_name} : {azure_error}")
 
 
 @user_files_bp.route('/rename-file', methods=['POST'])
