@@ -13,6 +13,7 @@ import './homePage.css';
 import { useFileService } from '../API/FileServiceAPI';
 import { getMimeTypes } from '../services/FileService';
 import { generateFileID } from '../services/FileService';
+import { decompresseFile } from '../services/Decompression';
 
 const sectionComponents = {
   recent: RecentFiles,
@@ -39,22 +40,45 @@ const HomePage = () => {
 
   const openFile = async (fileName, extension) => {
     try {
-      const fileData = await fetchUserFile(fileName, extension);
-      const mimeTypes = getMimeTypes();
-      const blobType = mimeTypes[extension.split('.')[1]] || '';
-  
-      if (!blobType) {
-        console.error('Format de fichier non pris en charge');
-        return;
-      }
-  
-      const blob = new Blob([fileData], { type: blobType });
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank');
+        // Récupérer l'URL SAS pour le fichier depuis le serveur
+        const fileUrl = await fetchUserFile(fileName, extension);
+
+        // Extraire le nom du fichier depuis l'URL
+        const urlPath = new URL(fileUrl).pathname;
+        const blobName = urlPath.substring(urlPath.lastIndexOf("/") + 1);
+
+        // Détecter si le fichier est compressé
+        const isCompressed = blobName.includes("_compressed.bin");
+
+        // Télécharger le fichier depuis Azure
+        const response = await fetch(fileUrl);
+        const arrayBuffer = await response.arrayBuffer();
+
+        // Si le fichier est compressé, le décompresser
+        let fileContent = arrayBuffer;
+        let finalExtension = extension;
+
+        if (isCompressed) {
+            const { contenuDecode: decompressedContent, extensionOriginale } = decompresseFile(arrayBuffer);
+            fileContent = decompressedContent;
+            finalExtension = `.${extensionOriginale}`.replace(".", "").toLowerCase();
+        }
+
+        // Déterminer le type MIME du fichier
+        const mimeTypes = getMimeTypes();
+        const blobType = mimeTypes[finalExtension.split('.')[1]] || "application/octet-stream";
+        console.log("extension", finalExtension);
+        console.log("Type MIME du fichier :", blobType);
+
+        // Créer un Blob pour ouvrir le fichier dans un nouvel onglet
+        const blob = new Blob([fileContent], { type: blobType });
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, "_blank");
     } catch (error) {
-      console.error("Erreur lors de l'ouverture du fichier :", error);
+        console.error("Erreur lors de l'ouverture du fichier :", error);
     }
-  };
+};
+
 
   const handleOpenAddFileModal = () => setShowAddFileModal(true);
   const handleCloseAddFileModal = () => setShowAddFileModal(false);

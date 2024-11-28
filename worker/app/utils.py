@@ -13,16 +13,7 @@ def compresse_file(contenu_original: bytes, extension: str) -> bytes:
 def decompresse_file(fichier_comprime: bytes) -> (bytes, str):
     extension_originale, table_codage, contenu_encode_bytes = desassembler_fichier_comprime(fichier_comprime)
     table_codage_inverse = {v: k for k, v in table_codage.items()}
-
-    print(f"Extension originale : {extension_originale}")
-    print(f"Taille table codage : {len(table_codage)}")
-    print(f"Table de codage : {table_codage}")
-    print(f"Taille contenu encodé ajusté : {len(contenu_encode_bytes)}")
     contenu_decode = decode_fichier(contenu_encode_bytes, table_codage_inverse)
-    print(f"Contenu décompressé (brut) : {contenu_decode[:500]}")  # Affiche les 500 premiers octets
-
-    return contenu_decode, extension_originale
-
 
     return contenu_decode, extension_originale
 
@@ -319,13 +310,3 @@ def test_decode_table_codage():
 
     print("table_recuperee : ", table_recuperee)
     assert table_recuperee == resultat_attendu, "La table de codage récupérée ne correspond pas à la table d'origine."
-
-
-def run_test():
-    test_compression_decompression()
-    test_cree_dictionnaire()
-    test_cree_arbre_huffman_complexe()
-    test_genere_table_codage()
-    test_encode_table_codage()
-    test_decode_table_codage()
-#run_test()

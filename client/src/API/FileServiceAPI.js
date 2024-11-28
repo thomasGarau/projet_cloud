@@ -34,18 +34,21 @@ export const useFileService = () => {
     }
 
     const fetchUserFile = async (filename, extension) => {
-        const config = {
-            responseType: 'blob',
-        }
-        
         try {
-            const response = await api.get(`${apiController}/user-files/${filename}${extension}`, config);
-            return response.data;
+            // Appel à l'API pour obtenir le lien SAS
+            const response = await api.get(`${apiController}/user-files/${filename}${extension}`);
+            const { fileUrl } = response.data;
+    
+            if (!fileUrl) {
+                throw new Error("Lien SAS non retourné par le serveur.");
+            }
+    
+            return fileUrl; // Retourne l'URL SAS pour téléchargement direct
         } catch (error) {
             console.error("Erreur lors de la récupération du fichier : ", error);
-            throw new Error('Erreur lors de la récupération du fichier');
+            throw new Error("Erreur lors de la récupération du fichier");
         }
-    };
+    }
 
     const uploadFile = async (file, file_id, onStart, onComplete, onError) => {
         const formData = new FormData();
