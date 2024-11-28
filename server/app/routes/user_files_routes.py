@@ -16,73 +16,177 @@ user_files_bp = Blueprint('user_files', __name__)
 
 uploads = {}
 
+from flask import send_file, Response, abort
+from azure.storage.blob import BlobServiceClient
+import io
+
 @user_files_bp.route('/user-files/<filename>.<extension>')
 @jwt_required()
 def user_files(filename, extension):
     full_name = f"{filename}.{extension}"
     username = get_jwt_identity()
-    file = File.query.join(File.user).filter(File.name == filename, File.extension == f".{extension}", User.username == username).first()
-    if file:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, filename + '.bin')
-        file.last_opened = datetime.utcnow()
-        db.session.commit()
-        
-        try:
-            with open(file_path, 'rb') as compressed_file:
-                compressed_content = compressed_file.read()
-                file_content = decompresse_file(compressed_content)
-                
-            response = Response(file_content, mimetype='application/octet-stream')
-            response.headers["Content-Disposition"] = "attachment; filename={}".format(full_name)
-            return response
-        except FileNotFoundError:
-            print("File not found", full_name)
+
+    # Recherche du fichier dans la base de données (fichiers utilisateur ou partagés)
+    file = File.query.join(File.user).filter(
+        File.name == filename,
+        File.extension == f".{extension}",
+        User.username == username
+    ).first()
+
+    # Si non trouvé, vérifier les fichiers partagés
+    if not file:
+        shared_file = SharedFile.query.join(File).join(User).filter(
+            File.name == filename,
+            File.extension == f".{extension}",
+            SharedFile.shared_with_user_id == User.query.filter_by(username=username).first().id
+        ).first()
+
+        if shared_file:
+            file = shared_file.file
+            owner_username = shared_file.owner_user.username  # Nom d'utilisateur du propriétaire
+        else:
+            current_app.logger.warning(f"Fichier introuvable : {full_name} pour l'utilisateur {username}")
             abort(404)
     else:
-        print("file not found in db", full_name, username)
-        abort(404)
+        owner_username = username  # Nom d'utilisateur du propriétaire pour les fichiers utilisateurs
+
+    # Mise à jour du champ `last_opened` pour les fichiers personnels
+    if file and file.user.username == username:
+        file.last_opened = datetime.utcnow()
+        db.session.commit()
+
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    try:
+        # Connexion au Blob Service Client
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_client = blob_service_client.get_container_client(container_name)
+
+        # Chemin du fichier dans Azure Blob Storage
+        blob_name = f"{owner_username}/{filename}.bin"  # Dossier du propriétaire
+        blob_client = container_client.get_blob_client(blob_name)
+
+        # Téléchargement du fichier depuis Azure
+        stream = io.BytesIO()
+        blob_client.download_blob().readinto(stream)
+        compressed_content = stream.getvalue()
+        stream.close()
+
+        # Décompression du fichier
+        file_content = decompresse_file(compressed_content)
+
+        # Retourner le fichier décompressé comme réponse
+        response = Response(file_content, mimetype='application/octet-stream')
+        response.headers["Content-Disposition"] = f"attachment; filename={full_name}"
+        return response
+
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors du téléchargement du fichier {full_name} : {e}")
+        abort(500)
+
 
 @user_files_bp.route('/recent-user-files-info')
 @jwt_required()
 def recent_user_files_info():
     username = get_jwt_identity()
-    files = File.query.join(File.user).filter(User.username == username).order_by(File.last_opened.desc()).all()
+
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client(container_name)
+
     files_info = []
-    for file in files:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, file.name + '.bin')
-        if os.path.isfile(file_path):
-            file_info = {
-                'name': file.name,
-                'extension': file.extension,
-                'createdAt': file.created_at.strftime("%d/%m/%Y"),
-                'userName': username,
-                'lastOpened': file.last_opened.strftime("%d/%m/%Y %H:%M:%S") if file.last_opened else "Non ouvert"
-            }
-            files_info.append(file_info)
+
+    try:
+        # Récupérer les fichiers récents depuis la base de données
+        files_in_db = File.query.join(File.user).filter(User.username == username).order_by(File.last_opened.desc()).all()
+
+        # Indexer les informations par chemin complet pour correspondre aux blobs Azure
+        db_file_info_map = {file.azure_blob_path: file for file in files_in_db}
+
+        # Lister les blobs pour cet utilisateur
+        blobs = container_client.list_blobs(name_starts_with=f"{username}/")
+        for blob in blobs:
+            blob_path = blob.name  # Chemin complet du blob
+            file_db_info = db_file_info_map.get(blob_path)
+
+            # Vérifiez si le fichier existe dans la base de données
+            if file_db_info:
+                file_info = {
+                    'name': file_db_info.name,
+                    'extension': file_db_info.extension,
+                    'createdAt': file_db_info.created_at.strftime("%d/%m/%Y"),
+                    'userName': username,
+                    'lastOpened': file_db_info.last_opened.strftime("%d/%m/%Y %H:%M:%S") if file_db_info.last_opened else "Non ouvert"
+                }
+                files_info.append(file_info)
+
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors de la récupération des fichiers récents : {e}")
+        return jsonify({"error": "Impossible de récupérer les fichiers récents depuis Azure"}), 500
+
     return jsonify(files_info)
+
 
 @user_files_bp.route('/shared-with-me')
 @jwt_required()
 def shared_with_me():
     username = get_jwt_identity()
     user = User.query.filter_by(username=username).first()
-    
+
     if not user:
         return jsonify({'error': 'Utilisateur non trouvé'}), 404
 
-    shared_files = SharedFile.query.filter_by(shared_with_user_id=user.id).all()
-    
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client(container_name)
+
     files_info = []
-    for shared_file in shared_files:
-        file = shared_file.file
-        file_info = {
-            'name': file.name,
-            'extension': file.extension,
-            'createdAt': file.created_at.strftime("%d/%m/%Y"),
-            'ownerUserName': shared_file.owner_user.username
-        }
-        files_info.append(file_info)
-    
+
+    try:
+        # Récupérer les fichiers partagés depuis la base de données
+        shared_files = SharedFile.query.filter_by(shared_with_user_id=user.id).all()
+
+        # Indexer les informations par chemin complet pour correspondre aux blobs Azure
+        db_file_info_map = {sf.file.azure_blob_path: sf for sf in shared_files}
+
+        # Lister les blobs partagés depuis Azure
+        blobs = container_client.list_blobs()
+        for blob in blobs:
+            blob_path = blob.name  # Chemin complet du blob
+            shared_file_db_info = db_file_info_map.get(blob_path)
+
+            # Vérifiez si le fichier existe dans la base de données
+            if shared_file_db_info:
+                file = shared_file_db_info.file
+                file_info = {
+                    'name': file.name,
+                    'extension': file.extension,
+                    'createdAt': file.created_at.strftime("%d/%m/%Y"),
+                    'ownerUserName': shared_file_db_info.owner_user.username
+                }
+                files_info.append(file_info)
+
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors de la récupération des fichiers partagés : {e}")
+        return jsonify({"error": "Impossible de récupérer les fichiers partagés depuis Azure"}), 500
+
     return jsonify(files_info)
 
 
@@ -104,27 +208,37 @@ def user_files_info():
     files_info = []
 
     try:
+        # Récupérer les fichiers de l'utilisateur dans la base de données
+        files_in_db = File.query.join(File.user).filter(User.username == username).all()
+
+        # Indexer les informations par le chemin complet du blob
+        db_file_info_map = {file.azure_blob_path: file for file in files_in_db}
+
         # Lister les blobs pour cet utilisateur
         blobs = container_client.list_blobs(name_starts_with=f"{username}/")
         for blob in blobs:
-            # Extraire le nom du fichier et l'extension
-            file_full_name = blob.name.split("/")[-1]  # Ex. "document.pdf"
-            file_name, file_extension = os.path.splitext(file_full_name)
+            blob_path = blob.name  # Chemin complet du blob, ex. "username/document.bin"
+            file_db_info = db_file_info_map.get(blob_path)
 
-            file_info = {
-                'name': file_name,  # Nom du fichier sans extension
-                'extension': file_extension,  # Extension, ex : .pdf
-                'createdAt': blob.creation_time.strftime("%d/%m/%Y") if blob.creation_time else "Inconnue",
-                'userName': username,
-                'lastOpened': "Non disponible dans Azure"  # Azure ne stocke pas cette info
-            }
-            files_info.append(file_info)
+            # Vérifiez si le fichier existe dans la base de données
+            if file_db_info:
+                file_info = {
+                    'name': file_db_info.name,  # Nom du fichier sans extension
+                    'extension': file_db_info.extension,  # Extension depuis la BDD
+                    'createdAt': blob.creation_time.strftime("%d/%m/%Y") if blob.creation_time else "Inconnue",
+                    'userName': username,
+                    'lastOpened': file_db_info.last_opened.strftime("%d/%m/%Y") if file_db_info.last_opened else "Inconnue",
+                }
+                files_info.append(file_info)
+            else:
+                current_app.logger.warning(f"Blob non trouvé dans la BDD : {blob_path}")
 
     except Exception as e:
         current_app.logger.error(f"Erreur lors de la récupération des fichiers : {e}")
         return jsonify({"error": "Impossible de récupérer les fichiers depuis Azure Blob Storage"}), 500
 
     return jsonify(files_info)
+
 
 @user_files_bp.route('/upload-file', methods=['POST'])
 @jwt_required()
@@ -238,51 +352,98 @@ def rename_file():
     original_name, original_extension = os.path.splitext(original_full_name)
     new_name, new_extension = os.path.splitext(new_full_name)
 
-    print("original name : ", original_name, "new name : ", new_name)
-    print("original extension : ", original_extension, "new extension : ", new_extension)
+    # Vérification dans la base de données
+    file = File.query.join(File.user).filter(
+        File.name == original_name,
+        File.extension == original_extension,
+        User.username == username
+    ).first()
 
-    file = File.query.join(File.user).filter(File.name == original_name, File.extension == original_extension, User.username == username).first()
-    if file:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, original_name + original_extension)
-        new_file_path = safe_join(current_app.config['USER_STORAGE'], username, new_name + original_extension)
-
-        if os.path.exists(file_path):
-            os.rename(file_path, new_file_path)
-            file.name = new_name
-            file.extension = original_extension
-            db.session.commit()
-            return jsonify({'message': 'Fichier renommé avec succès'}), 200
-        else:
-            return jsonify({'error': 'Fichier non trouvé'}), 404
-    else:
+    if not file:
         return jsonify({'error': 'Accès non autorisé ou fichier non trouvé'}), 403
+
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_client = blob_service_client.get_container_client(container_name)
+
+        # Définir les chemins dans Azure
+        original_blob_name = f"{username}/{original_name}.bin"
+        new_blob_name = f"{username}/{new_name}.bin"
+
+        # Copier le fichier dans Azure
+        source_blob = container_client.get_blob_client(original_blob_name)
+        new_blob = container_client.get_blob_client(new_blob_name)
+        new_blob.start_copy_from_url(source_blob.url)
+
+        # Supprimer l'ancien blob après la copie
+        source_blob.delete_blob()
+
+        # Mettre à jour la base de données
+        file.name = new_name
+        file.azure_blob_path = new_blob_name  # Mettre à jour le chemin dans la BDD
+        db.session.commit()
+
+        return jsonify({'message': 'Fichier renommé avec succès'}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors du renommage du fichier {original_full_name} : {e}")
+        return jsonify({'error': 'Erreur lors du renommage du fichier'}), 500
 
 
 @user_files_bp.route('/delete-file/<filename>', methods=['DELETE'])
 @jwt_required()
 def delete_file(filename):
     username = get_jwt_identity()
+
     try:
         f_name, extension = filename.rsplit('.', 1)
     except ValueError as e:
-        print(f"Erreur en divisant le filename : {e}")
+        current_app.logger.error(f"Erreur en divisant le filename : {e}")
         return jsonify({'error': 'Format de fichier invalide'}), 400
 
-    file = File.query.join(File.user).filter(File.name == f_name, File.extension == '.' + extension, User.username == username).first()
-    if file:
-        file_path = safe_join(current_app.config['USER_STORAGE'], username, filename)
+    file = File.query.join(File.user).filter(
+        File.name == f_name,
+        File.extension == '.' + extension,
+        User.username == username
+    ).first()
 
+    if not file:
+        return jsonify({'error': 'Accès non autorisé ou fichier non trouvé'}), 403
+
+    # Récupération des informations de connexion Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not connection_string or not container_name:
+        return jsonify({"error": "Configuration Azure Blob Storage manquante"}), 500
+
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_client = blob_service_client.get_container_client(container_name)
+
+        # Définir le chemin dans Azure
+        blob_name = f"{username}/{f_name}.bin"
+        blob_client = container_client.get_blob_client(blob_name)
+
+        # Supprimer le fichier dans Azure
+        blob_client.delete_blob()
+
+        # Supprimer l'entrée dans la base de données
         db.session.delete(file)
         db.session.commit()
 
-        remaining_files = File.query.filter_by(name=f_name, extension='.' + extension).count()
-        if remaining_files == 0 and os.path.exists(file_path):
-            os.remove(file_path)
-
         return jsonify({'message': 'Fichier supprimé avec succès'}), 200
-    else:
-        return jsonify({'error': 'Accès non autorisé ou fichier non trouvé'}), 403
 
+    except Exception as e:
+        current_app.logger.error(f"Erreur lors de la suppression du fichier {filename} : {e}")
+        return jsonify({'error': 'Erreur lors de la suppression du fichier'}), 500
 
 
 @user_files_bp.route('/storage-info')
