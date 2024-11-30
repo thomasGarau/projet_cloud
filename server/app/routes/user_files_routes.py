@@ -95,9 +95,8 @@ def user_files(filename, extension):
         )
         
         # Construire une URL sans les credentials dans le host
-        clean_account_name = account_name.split('@')[0]  # Supprimer la partie après '@' si présente
-        sas_url = f"https://{clean_account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
-        print(sas_url)
+        sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+        print("sas_url", sas_url)
         return jsonify({
             "fileUrl": sas_url,
             "originalName": f"{filename}{extension}",

@@ -1,5 +1,8 @@
 // Fonction principale pour décompresser le fichier
-export function decompresseFile(fichierComprime) {
+export function decompresseFile(fichierComprimeBase64) {
+    // Décodage Base64 pour obtenir le fichier compressé original
+    const fichierComprime = Uint8Array.from(atob(fichierComprimeBase64), c => c.charCodeAt(0));
+
     const { extensionOriginale, tableCodage, contenuEncode } = desassemblerFichierComprime(fichierComprime);
 
     const tableCodageInverse = invertTableCodage(tableCodage);
@@ -12,9 +15,11 @@ export function decompresseFile(fichierComprime) {
     const contenuDecodeString = textDecoder.decode(contenuDecodeBytes);
 
     console.log("Contenu décodé (client) :", contenuDecodeString);
-
+    console.log("500 premiers bits décodés (client) :", contenuDecodeString.slice(0, 500));
     return { contenuDecode: contenuDecodeString, extensionOriginale };
 }
+
+
 // Fonction pour désassembler le fichier compressé
 function desassemblerFichierComprime(fichierComprime) {
     const dataView = new DataView(fichierComprime);

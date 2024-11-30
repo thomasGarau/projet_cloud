@@ -21,11 +21,6 @@ load_dotenv()  # Charger les variables d'environnement depuis le fichier .env
 AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
 
-
-print(f"Container name: {AZURE_CONTAINER_NAME}")
-
-
-
 migrate = Migrate()
 jwt = JWTManager()
 app = None
@@ -42,7 +37,6 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
     app.config['USER_STORAGE'] = os.path.join(os.path.dirname(app.instance_path), 'user_storage')
-
 
 
     db.init_app(app)
