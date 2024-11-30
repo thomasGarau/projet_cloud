@@ -1,40 +1,27 @@
 from pathlib import Path
 import json
-import base64
 
-import base64
-
-def compresse_file(contenu_original: bytes, extension: str) -> str:
-    """
-    Compresse un fichier et retourne son contenu compressé encodé en Base64.
-
-    :param contenu_original: Contenu du fichier à compresser (bytes).
-    :param extension: Extension du fichier original (str).
-    :return: Fichier compressé encodé en Base64 (str).
-    """
-    # Création du dictionnaire et de l'arbre Huffman
+def compresse_file(contenu_original: bytes, extension: str) -> bytes:
     dico = cree_dictionnaire(contenu_original)
     arbre = cree_arbre_huffman(dico)
     table_codage = genere_table_codage(arbre)
-
-    # Compression
     contenu_encode = encode_fichier(contenu_original, table_codage)
     fichier_assembler = assembler_fichier_comprime(table_codage, contenu_encode, extension)
-
-    # Vérification du type de fichier_assembler
-    if not isinstance(fichier_assembler, bytes):
-        raise TypeError(f"assembler_fichier_comprime a retourné un type inattendu : {type(fichier_assembler)}")
-
-    # Encodage en Base64
-    fichier_base64 = base64.b64encode(fichier_assembler).decode('utf-8')
-    print("Chaîne Base64 générée :", fichier_base64[:100]) 
-
-    return fichier_base64
+    return fichier_assembler
 
 def decompresse_file(fichier_comprime: bytes) -> (bytes, str):
     extension_originale, table_codage, contenu_encode_bytes = desassembler_fichier_comprime(fichier_comprime)
     table_codage_inverse = {v: k for k, v in table_codage.items()}
+
+    print(f"Extension originale : {extension_originale}")
+    print(f"Taille table codage : {len(table_codage)}")
+    print(f"Table de codage : {table_codage}")
+    print(f"Taille contenu encodé ajusté : {len(contenu_encode_bytes)}")
     contenu_decode = decode_fichier(contenu_encode_bytes, table_codage_inverse)
+    print(f"Contenu décompressé (brut) : {contenu_decode[:500]}")  # Affiche les 500 premiers octets
+
+    return contenu_decode, extension_originale
+
 
     return contenu_decode, extension_originale
 
@@ -183,30 +170,21 @@ def affiche_arbre_huffman(noeud, prefix=""):
             affiche_arbre_huffman(noeud.droit, prefix + "1")
 
 def test_compression_decompression():
-    # Lire le contenu du fichier aide.pdf
-    with open(r"C:\Users\thoma\projet\projet_cloud\server\app\services\aide.pdf", "rb") as fichier:
-        contenu_original = fichier.read()
-
-    # Compression du fichier
-    fichier_comprime = compresse_file(contenu_original, "pdf")
-
-    # Encodage en Base64 pour transmission
-    fichier_comprime_base64 = base64.b64encode(fichier_comprime).decode('utf-8')
-
-    # Décodage Base64 avant décompression
-    fichier_comprime_decode = base64.b64decode(fichier_comprime_base64)
-
-    # Décompression du fichier
-    contenu_decompresse, extension = decompresse_file(fichier_comprime_decode)
+    contenu_original = b"ceci est un test trop jolie sympa tout ca tout ca mais je pense que ca commence a me casser les couilles moi tout ca c'est connerie de huffman et de t en trop ."
+    dico = cree_dictionnaire(contenu_original)
+    arbre = cree_arbre_huffman(dico)
+    table_codage = genere_table_codage(arbre)
     
-    # Vérification et affichage
+    contenu_encode = encode_fichier(contenu_original, table_codage)
+    fichier_comprime = assembler_fichier_comprime(table_codage, contenu_encode, "txt")
+    extension, table_codage_recuperee, contenu_encode_recupere = desassembler_fichier_comprime(fichier_comprime)
+    contenu_encode_bytes = bitstring_to_bytes(contenu_encode_recupere)
+    contenu_decompresse = decode_fichier(contenu_encode_bytes, {v: int(k) for k, v in table_codage_recuperee.items()})
     if contenu_original == contenu_decompresse:
         print("Le test de compression et de décompression a réussi. Le contenu original et décompressé sont identiques.")
     else:
         print("Le test de compression et de décompression a échoué. Il y a une différence entre le contenu original et décompressé.")
-    
-    # Afficher les 100 premiers octets après décompression
-    print("100 premiers octets après décompression :", contenu_decompresse[:500])
+    print("taille contenu original : ", len(contenu_original), "taille contenu encoder : ", len(contenu_encode), "taux de compression : ", (1 - len(contenu_encode) / len(contenu_original)) * 100, "%")
 
 def test_cree_dictionnaire():
     contenu_test = b"affbcbecddcdefefdefef"

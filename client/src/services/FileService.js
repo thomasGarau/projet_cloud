@@ -17,7 +17,7 @@ export const getFileIcons = () => {
       doc: 'application/msword',
       docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       pdf: 'application/pdf',
-      txt: 'text/plain',
+      txt: 'text/plain;charset=utf-8', 
       webp: 'image/webp',
       '': 'application/octet-stream'
     };
