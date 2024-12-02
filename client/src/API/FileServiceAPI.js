@@ -160,6 +160,20 @@ export const useFileService = () => {
         }
     };
 
+    const generateSyncScript = async (localPath) => {
+        try {
+            
+            const response = await api.post(`${apiController}/get_sync_script`, {
+            local_path: localPath,
+            headers: { 'Content-Type': 'application/json' },
+        });
+          return response.data;
+        } catch (error) {
+          console.error('Erreur lors de la génération du script :', error);
+          throw new Error('Impossible de générer le script.');
+        }
+      };
+
     return {
         fetchUserFilesInfo,
         fetchUserFile,
@@ -173,5 +187,6 @@ export const useFileService = () => {
         fetchFilesSharedWithMe,
         stopSharingFile,
         checkUploadStatus,
+        generateSyncScript,
     };
 };

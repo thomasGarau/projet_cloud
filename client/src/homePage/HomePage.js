@@ -14,12 +14,14 @@ import { useFileService } from '../API/FileServiceAPI';
 import { getMimeTypes } from '../services/FileService';
 import { generateFileID } from '../services/FileService';
 import { decompresseFile } from '../services/Decompression';
+import LocalSync from '../component/section/LocalSync';
 
 const sectionComponents = {
   recent: RecentFiles,
   shared: SharedWithMe,
   storage: StorageInfo,
   allFiles: AllFiles,
+  localSync: LocalSync, 
 };
 
 const HomePage = () => {
@@ -169,6 +171,13 @@ const HomePage = () => {
             Storage
           </li>
           <li onClick={() => setIsAddFileModalOpen(true)}>Add Files</li>
+          <li
+            className={selectedSection === 'localSync' ? 'selected' : ''}
+            onClick={() => setSelectedSection('localSync')}
+          >
+            Local Sync
+          </li>;
+
         </ul>
       </div>
       <div className="main-content">

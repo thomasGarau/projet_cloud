@@ -22,18 +22,20 @@ def start_worker():
         logger.error("Erreur lors de la configuration des connexions Azure. Arrêt du worker.")
         return
 
-    logger.info("Worker démarré. En attente de messages...")
+    print("Worker démarré. En attente de messages...")
 
     batch_size = 5  # Taille initiale des lots
 
     while True:
         # Calculer le score hybride
         availability_score = calculate_hybrid_availability_score()
-        logger.info(f"Score de disponibilité hybride : {availability_score:.2f}")
+        print(f"Score de disponibilité hybride : {availability_score:.2f}")
 
         # Ajuster la taille des lots en fonction du score hybride
         batch_size = adjust_batch_size_based_on_score(availability_score, batch_size)
-        logger.info(f"Taille du lot ajustée : {batch_size}")
+        print(f"Taille du lot ajustée : {batch_size}")
+
+        process_queue_messages(queue_client, container_client, logger, batch_size)
 
 
 
@@ -57,9 +59,9 @@ def setup_azure_connections(logger):
         # Vérification ou création de la file d’attente
         try:
             queue_client.create_queue()
-            logger.info(f"File d'attente '{queue_name}' créée avec succès.")
+            print(f"File d'attente '{queue_name}' créée avec succès.")
         except ResourceExistsError:
-            logger.info(f"File d'attente '{queue_name}' déjà existante.")
+            print(f"File d'attente '{queue_name}' déjà existante.")
 
         return queue_client, container_client
     except AzureError as e:
@@ -74,7 +76,7 @@ def process_queue_messages(queue_client, container_client, logger, batch_size):
     try:
         messages = queue_client.receive_messages(messages_per_page=batch_size)
         if not messages:
-            logger.info("Aucun message à traiter. En attente...")
+            print("Aucun message à traiter. En attente...")
             time.sleep(2)
             return
 
@@ -87,7 +89,7 @@ def process_queue_messages(queue_client, container_client, logger, batch_size):
 
 def process_message(message, container_client, queue_client, logger):
     try:
-        logger.info(f"Message reçu : {message.content}")
+        print(f"Message reçu : {message.content}")
         message_content = json.loads(message.content)
 
         # Extraire les informations
@@ -100,11 +102,11 @@ def process_message(message, container_client, queue_client, logger):
 
         # Supprimer le fichier temporaire
         container_client.get_blob_client(blob_name).delete_blob()
-        logger.info(f"Fichier temporaire supprimé : {blob_name}")
+        print(f"Fichier temporaire supprimé : {blob_name}")
 
         # Supprimer le message de la file d’attente
         queue_client.delete_message(message)
-        logger.info(f"Message traité et supprimé de la file d'attente.")
+        print(f"Message traité et supprimé de la file d'attente.")
     except json.JSONDecodeError as e:
         logger.error(f"Erreur de décodage JSON pour le message : {e}")
         queue_client.delete_message(message)  # Supprimez les messages corrompus
@@ -131,7 +133,7 @@ def extract_message_data(message_content):
 
 def process_blob(username, filename, extension, blob_name, container_client, logger):
     # Télécharger le fichier
-    logger.info(f"Téléchargement du fichier : {blob_name}")
+    print(f"Téléchargement du fichier : {blob_name}")
     blob_client = container_client.get_blob_client(blob_name)
     stream = io.BytesIO()
     blob_client.download_blob().readinto(stream)
@@ -139,14 +141,14 @@ def process_blob(username, filename, extension, blob_name, container_client, log
     stream.close()
 
     # Compression du fichier
-    logger.info(f"Compression du fichier : {filename}{extension}")
+    print(f"Compression du fichier : {filename}{extension}")
     compressed_content = compresse_file(file_content, extension)
 
     # Sauvegarder le fichier compressé
     compressed_blob_name = f"{username}/{filename}_compressed.bin"
     compressed_blob_client = container_client.get_blob_client(compressed_blob_name)
     compressed_blob_client.upload_blob(compressed_content, overwrite=True)
-    logger.info(f"Fichier compressé sauvegardé sous : {compressed_blob_name}")
+    print(f"Fichier compressé sauvegardé sous : {compressed_blob_name}")
 
     return compressed_blob_name
 

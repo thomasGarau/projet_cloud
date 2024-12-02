@@ -10,13 +10,16 @@ from ..services.compression_service import compresse_file, decompresse_file
 from ..models.file_models import File
 from ..models.user_models import User
 from ..models.shared_files_models import SharedFile
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import BlobServiceClient, generate_blob_sas, generate_container_sas, BlobSasPermissions, ContainerSasPermissions, ContainerClient
 from azure.storage.queue import QueueClient
 import json
+import tempfile
+from flask import send_file
 
 user_files_bp = Blueprint('user_files', __name__)
 
 uploads = {}
+
 
 from flask import send_file, Response, abort
 from azure.storage.blob import BlobServiceClient
@@ -501,50 +504,27 @@ def delete_file(filename):
 def storage_info():
     username = get_jwt_identity()
     user_files = File.query.join(File.user).filter(User.username == username).all()
-    
+
+    # Calculer la taille totale des fichiers originaux
     total_original_size = sum(file.original_size for file in user_files)
-    total_compressed_size = sum(file.compressed_size or 0 for file in user_files)
-    max_storage_size = 5
     
+    # Récupérer la taille totale des fichiers compressés depuis Azure
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+    total_compressed_size = get_user_compressed_storage(username, container_name, connection_string)
+
+    # Calculer les informations de stockage
+    max_storage_size = 5  # 5 Go
+    space_saved = total_original_size - total_compressed_size
+    space_available = max_storage_size - total_compressed_size
+
     return jsonify({
         'total_original_size': total_original_size,
         'total_compressed_size': total_compressed_size,
-        'space_saved': total_original_size - total_compressed_size,
-        'total_space' : max_storage_size,
-        'space_available': max_storage_size - total_compressed_size
+        'space_saved': space_saved,
+        'total_space': max_storage_size,
+        'space_available': space_available
     })
-
-
-@user_files_bp.route('/share-file', methods=['POST'])
-@jwt_required()
-def share_file():
-    print("appel de la route share-file")
-    data = request.get_json()
-    filename = data.get('filename')
-    share_with_username = data.get('shareWithUsername')
-    f_name, extension = filename.rsplit('.', 1)
-
-    
-    username = get_jwt_identity()
-    user = User.query.filter_by(username=username).first()
-    share_with_user = User.query.filter_by(username=share_with_username).first()
-    
-    if not user or not share_with_user:
-        print("Utilisateur non trouvé", username, share_with_username)
-        return jsonify({'error': 'Utilisateur non trouvé'}), 404
-
-    file = File.query.filter_by(name=f_name, user_id=user.id).first()
-    
-    if not file:
-        print("Fichier non trouvé", f_name, user.id)
-        return jsonify({'error': 'Fichier non trouvé'}), 404
-
-    shared_file = SharedFile(file_id=file.id, owner_user_id=user.id, shared_with_user_id=share_with_user.id)
-    db.session.add(shared_file)
-    db.session.commit()
-    
-    return jsonify({'message': 'Fichier partagé avec succès'}), 200
-
 
 @user_files_bp.route('/stop-sharing-file', methods=['DELETE'])
 @jwt_required()
@@ -577,3 +557,209 @@ def stop_sharing_file():
     db.session.commit()
     
     return jsonify({'message': 'Partage du fichier arrêté avec succès'}), 200
+
+
+def get_user_compressed_storage(username, container_name, connection_string):
+    """
+    Récupère la taille totale des fichiers compressés pour un utilisateur spécifique.
+
+    :param username: Nom d'utilisateur
+    :param container_name: Nom du conteneur Azure Blob
+    :param connection_string: Chaîne de connexion Azure
+    :return: Taille totale en octets des fichiers compressés
+    """
+    container_client = ContainerClient.from_connection_string(connection_string, container_name)
+    total_compressed_size = 0
+
+    # Lister tous les blobs dans le dossier de l'utilisateur
+    blobs = container_client.list_blobs(name_starts_with=f"{username}/")
+    
+    for blob in blobs:
+        total_compressed_size += blob.size
+
+    return total_compressed_size
+
+
+def generate_sync_sas(user_folder):
+    """Génère un lien SAS pour un dossier utilisateur spécifique."""
+    # Récupérer les paramètres depuis les variables d'environnement
+    storage_account_name = os.getenv("AZURE_ACCOUNT_NAME")
+    storage_account_key = os.getenv("AZURE_ACCOUNT_KEY")
+    container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+    if not all([storage_account_name, storage_account_key, container_name]):
+        raise ValueError("Les variables d'environnement AZURE_ACCOUNT_NAME, AZURE_ACCOUNT_KEY et AZURE_STORAGE_CONTAINER_NAME doivent être définies.")
+
+    # Générer le lien SAS pour le conteneur avec des permissions restreintes
+    sas_token = generate_container_sas(
+        account_name=storage_account_name,
+        container_name=container_name,
+        account_key=storage_account_key,
+        permission=ContainerSasPermissions(read=True, write=True, list=True),
+        expiry=datetime.utcnow() + timedelta(days=30)  # Valide 30 jours
+    )
+
+    # Retourner l'URL complète avec le préfixe de dossier
+    return f"https://{storage_account_name}.blob.core.windows.net/{container_name}/{user_folder}?{sas_token}"
+
+
+@user_files_bp.route('/get_sync_script', methods=['POST'])
+@jwt_required()
+def get_sync_script():
+    """
+    Génère un script PowerShell pour synchroniser un dossier local avec un dossier Azure Blob Storage.
+    Le chemin local est envoyé par le client dans le corps de la requête.
+    """
+    AZCOPY_DOWNLOAD_URL = "https://aka.ms/downloadazcopy-v10-windows"
+
+    # Récupérer le chemin local depuis la requête
+    data = request.json
+    user_folder = get_jwt_identity()
+    local_path = data.get("local_path")  # Chemin local choisi par l'utilisateur
+
+    if not user_folder or not local_path:
+        return jsonify({"error": "Le dossier utilisateur et le chemin local sont requis"}), 400
+
+    # Générer le lien SAS
+    try:
+        sas_url = generate_sync_sas(user_folder)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Créer le script PowerShell
+    script_content = f"""
+        # Variables
+        $Global:azcopyExePath = ""
+        $azcopyUrl = "{AZCOPY_DOWNLOAD_URL}"
+        $azcopyZipPath = "$env:USERPROFILE\\Downloads\\azcopy.zip"
+        $azcopyExtractBasePath = "$env:USERPROFILE\\azcopy"
+        $localPath = "{local_path}"  # Chemin local fourni par l'utilisateur
+        $remotePath = "{sas_url}"    # Lien SAS vers Azure Blob Storage
+        $logFile = "$env:USERPROFILE\\Downloads\\azcopy_log.txt"
+        $azcopyLog = "$env:USERPROFILE\\Downloads\\azcopy_detailed_log.txt"
+
+        Write-Output "Début du script PowerShell."
+
+        # Fonction : Installer AzCopy si nécessaire
+        function Install-AzCopy {{
+            if (!(Test-Path $azcopyExtractBasePath)) {{
+                New-Item -ItemType Directory -Path $azcopyExtractBasePath | Out-Null
+            }}
+            if (!(Get-Command azcopy.exe -ErrorAction SilentlyContinue)) {{
+                Write-Output "Téléchargement d'AzCopy..."
+                Invoke-WebRequest -Uri $azcopyUrl -OutFile $azcopyZipPath -UseBasicParsing
+                Write-Output "Extraction d'AzCopy..."
+                Expand-Archive -Path $azcopyZipPath -DestinationPath $azcopyExtractBasePath -Force
+                Remove-Item $azcopyZipPath -Force
+            }}
+            $Global:azcopyExePath = Get-ChildItem -Path $azcopyExtractBasePath -Recurse -Filter "azcopy.exe" | Select-Object -ExpandProperty FullName -First 1
+            if (-not $Global:azcopyExePath) {{
+                Write-Output "Erreur : Impossible de trouver l'exécutable AzCopy après extraction."
+                Pause
+                exit 1
+            }}
+            Write-Output "Exécutable AzCopy trouvé : $Global:azcopyExePath"
+        }}
+
+        # Fonction : Synchronisation locale vers Azure
+        function Sync-ToAzure {{
+            Write-Output "Synchronisation des fichiers locaux vers Azure..."
+            if (-not $Global:azcopyExePath) {{
+                Write-Output "Erreur : AzCopy n'a pas été correctement initialisé."
+                return
+            }}
+            try {{
+                $command = "& `"$Global:azcopyExePath`" sync `"$localPath`" `"$remotePath`" --log-level=INFO --include-directory-stub"
+                Write-Output "Exécution de la commande : $command"
+                Invoke-Expression $command 2>&1 | Tee-Object -FilePath $logFile
+                Write-Output "Synchronisation locale vers Azure terminée."
+            }} catch {{
+                Write-Output "Erreur lors de la synchronisation locale vers Azure : $($_.Exception.Message)"
+            }}
+        }}
+
+        # Fonction : Synchronisation Azure vers local
+        function Sync-ToLocal {{
+            Write-Output "Synchronisation des fichiers Azure vers le dossier local..."
+            if (-not $Global:azcopyExePath) {{
+                Write-Output "Erreur : AzCopy n'a pas été correctement initialisé."
+                return
+            }}
+            try {{
+                $command = "& `"$Global:azcopyExePath`" sync `"$remotePath`" `"$localPath`" --log-level=INFO --include-directory-stub"
+                Write-Output "Exécution de la commande : $command"
+                Invoke-Expression $command 2>&1 | Tee-Object -FilePath $logFile
+                Write-Output "Synchronisation Azure vers local terminée."
+            }} catch {{
+                Write-Output "Erreur lors de la synchronisation Azure vers local : $($_.Exception.Message)"
+            }}
+        }}
+
+        # Fonction : Surveillance des changements locaux
+        function Start-Watcher {{
+            Write-Output "Activation de la surveillance des changements locaux..."
+            $watcher = New-Object System.IO.FileSystemWatcher
+            $watcher.Path = $localPath
+            $watcher.IncludeSubdirectories = $true
+            $watcher.EnableRaisingEvents = $true
+            $watcher.NotifyFilter = [System.IO.NotifyFilters]::FileName, [System.IO.NotifyFilters]::LastWrite
+
+            Register-ObjectEvent -InputObject $watcher -EventName "Changed" -Action {{
+                Write-Output "Changement détecté dans le dossier local."
+                Sync-ToAzure
+            }}
+            Register-ObjectEvent -InputObject $watcher -EventName "Created" -Action {{
+                Write-Output "Fichier créé dans le dossier local."
+                Sync-ToAzure
+            }}
+            Register-ObjectEvent -InputObject $watcher -EventName "Deleted" -Action {{
+                Write-Output "Fichier supprimé dans le dossier local."
+                Sync-ToAzure
+            }}
+            Write-Output "Surveillance du dossier local activée."
+        }}
+
+        # Fonction : Synchronisation périodique Azure → Local
+        function Periodic-Sync-ToLocal {{
+            while ($true) {{
+                try {{
+                    Write-Output "Synchronisation périodique Azure vers local..."
+                    Sync-ToLocal
+                    Write-Output "Synchronisation périodique terminée."
+                }} catch {{
+                    Write-Output "Erreur lors de la synchronisation périodique Azure vers local : $($_.Exception.Message)"
+                }}
+                Start-Sleep -Seconds 300  # Répéter toutes les 5 minutes
+            }}
+        }}
+
+        # Étape 1 : Installer AzCopy
+        Install-AzCopy
+
+        # Vérifiez l'exécutable global
+        Write-Output "Chemin AzCopy global après installation : $Global:azcopyExePath"
+
+        # Étape 2 : Synchronisation initiale
+        Sync-ToAzure
+        Sync-ToLocal
+
+        # Étape 3 : Activer la surveillance des changements locaux
+        Start-Watcher
+
+        # Étape 4 : Lancer la synchronisation périodique Azure → Local
+        Write-Output "Lancement de la synchronisation permanente. Appuyez sur Ctrl+C pour arrêter."
+        Periodic-Sync-ToLocal
+    """
+
+
+    # Créer un fichier temporaire pour le script en forçant l'encodage UTF-8
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ps1", delete=False, encoding="utf-8") as script_file:
+            script_file.write(script_content)
+            script_path = script_file.name
+    except Exception as e:
+        return jsonify({"error": f"Erreur lors de la création du fichier script : {str(e)}"}), 500
+
+    # Retourner le fichier PowerShell au client
+    return send_file(script_path, as_attachment=True, download_name="sync_script.ps1")
+
